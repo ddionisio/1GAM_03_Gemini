@@ -1,0 +1,16 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\M8\Editor\Input\InputMapper.cs">
+    <Files>
+      <File FileName="Assets\M8\Editor\Input\UIModalInputStackPopInspector.cs" Line="10" Column="1" />
+      <File FileName="Assets\M8\Editor\Input\InputMapper.cs" Line="50" Column="1" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="C:\Lab\1GAM_03_Gemini\Gemini\Assets\M8\Editor\Input\InputMapper.cs" line="225" />
+      <Breakpoint file="C:\Lab\1GAM_03_Gemini\Gemini\Assets\M8\Editor\Input\UIModalInputStackPopInspector.cs" line="10" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>
