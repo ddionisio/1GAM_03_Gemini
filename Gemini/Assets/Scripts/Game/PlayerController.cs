@@ -18,7 +18,7 @@ public class PlayerController : MonoBehaviour {
     }
 
     void Update() {
-        if(mInputEnabled) {
+        if(mInputEnabled && (cursor.state == Cursor.State.Move || cursor.state == Cursor.State.None)) {
             InputManager input = Main.instance.input;
 
             float x = input.GetAxis(InputAction.Horizontal);
@@ -38,7 +38,7 @@ public class PlayerController : MonoBehaviour {
                         cursor.MoveTo(Cursor.Dir.Up);
                 }
             }
-            else if( cursor.state == Cursor.State.Move) {
+            else {
                 cursor.Stop();
             }
         }

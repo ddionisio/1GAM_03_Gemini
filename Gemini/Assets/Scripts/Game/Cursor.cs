@@ -40,6 +40,7 @@ public class Cursor : MonoBehaviour {
     private float mRotStart;
     private float mRotEnd;
     private Block[] mRotBlocks = new Block[size.row * size.col];
+    private Block[] mRotBlocksCheck = new Block[size.row * size.col];
     private int mRotNumBlocks = 0;
 
     private M8.TilePos mTilePos;
@@ -103,6 +104,7 @@ public class Cursor : MonoBehaviour {
         if(mState == State.Rotate)
             return false;
 
+        //mRotBlocksCheck
         int numRotable = 0;
 
         for(int r = 0; r < size.row; r++) {
@@ -114,9 +116,13 @@ public class Cursor : MonoBehaviour {
                 Block b = mBoard.table[curR, curC];
                 if(b != null) {
                     if(b.canRotate && b.IsContainedIn(mTilePos, size)) {
-                        numRotable++;
+                        if(System.Array.IndexOf(mRotBlocksCheck, b, 0, numRotable) == -1) {
+                            mRotBlocksCheck[numRotable] = b;
+                            numRotable++;
+                        }
                     }
                     else {
+                        r = size.row;
                         numRotable = 0;
                         break;
                     }
@@ -134,18 +140,12 @@ public class Cursor : MonoBehaviour {
             cursorPos += mBoard.tileSize;
             
             //rotate tile reference for each block
-            for(int r = 0; r < size.row; r++) {
-                int curR = mTilePos.row + r;
-
-                for(int c = 0; c < size.col; c++) {
-                    int curC = mTilePos.col + c;
-
-                    Block b = mBoard.table[curR, curC];
-                    if(b != null && RotateAdd(b)) {
-                        b.SetRotateTile(dir, cursorPos);
-                        b.transform.parent = holder;
-                    }
-                }
+            mRotNumBlocks = numRotable;
+            for(int i = 0; i < numRotable; i++) {
+                mRotBlocks[i] = mRotBlocksCheck[i];
+                mRotBlocks[i].state = Block.State.Rotate;
+                mRotBlocks[i].SetRotateTile(dir, cursorPos);
+                mRotBlocks[i].transform.parent = holder;
             }
 
             //set rotation anim
@@ -171,12 +171,7 @@ public class Cursor : MonoBehaviour {
     }
 
     public bool RotateContains(Block b) {
-        for(int i = 0; i < mRotNumBlocks; i++) {
-            if(mRotBlocks[i] == b)
-                return true;
-        }
-
-        return false;
+        return System.Array.IndexOf(mRotBlocks, b, 0, mRotNumBlocks) != -1;
     }
 
     void Awake() {
@@ -205,16 +200,18 @@ public class Cursor : MonoBehaviour {
             case State.Move:
                 mCurTime += Time.deltaTime;
 
-                if(mMoveStart && mCurTime >= moveStartDelay) {
-                    if(MoveValid(mMoveDir)) {
-                        //keep moving
-                        mCurTime = 0.0f;
-                        mMoveStart = false;
+                if(mMoveStart) {
+                    if(mCurTime >= moveStartDelay) {
+                        if(MoveValid(mMoveDir)) {
+                            //keep moving
+                            mCurTime = 0.0f;
+                            mMoveStart = false;
 
-                        MoveCurrentDir();
-                    }
-                    else {
-                        Stop();
+                            MoveCurrentDir();
+                        }
+                        else {
+                            Stop();
+                        }
                     }
                 }
                 else if(mCurTime >= moveDelay) {
@@ -274,6 +271,8 @@ public class Cursor : MonoBehaviour {
                         mRotBlocks[i] = null;
                     }
                 }
+
+                holder.localRotation = Quaternion.identity;
 
                 //clear out
                 mRotNumBlocks = 0;
