@@ -113,7 +113,7 @@ public class Cursor : MonoBehaviour {
             for(int c = 0; c < size.col; c++) {
                 int curC = mTilePos.col + c;
 
-                Block b = mBoard.table[curR, curC];
+                Block b = mBoard.table[curR][curC];
                 if(b != null) {
                     if(b.canRotate && b.IsContainedIn(mTilePos, size)) {
                         if(System.Array.IndexOf(mRotBlocksCheck, b, 0, numRotable) == -1) {
@@ -174,11 +174,19 @@ public class Cursor : MonoBehaviour {
         return System.Array.IndexOf(mRotBlocks, b, 0, mRotNumBlocks) != -1;
     }
 
-    void Awake() {
-        mBoard = transform.parent != null ? transform.parent.GetComponent<Board>() : null;
-        if(mBoard == null) {
-            Debug.LogError("Board component needs to exist from the parent of cursor!");
+    void OnDestroy() {
+        if(mBoard != null) {
+            mBoard.actCallback -= OnBoardAction;
         }
+    }
+
+    void Awake() {
+        mBoard = M8.Util.GetComponentUpwards<Board>(transform, false);
+        if(mBoard == null) {
+            Debug.LogError("Board component needs to exist!");
+        }
+
+        mBoard.actCallback += OnBoardAction;
 
         //set to center bottom of board
         SetTilePos(0, (mBoard.numCol / 2) - (size.col / 2));
@@ -242,7 +250,7 @@ public class Cursor : MonoBehaviour {
     }
 
     void OnDrawGizmos() {
-        mBoard = transform.parent != null ? transform.parent.GetComponent<Board>() : null;
+        mBoard = M8.Util.GetComponentUpwards<Board>(transform, false);
         if(mBoard != null) {
             Gizmos.color = Color.green;
 
@@ -251,6 +259,18 @@ public class Cursor : MonoBehaviour {
             pos.y += mBoard.tileSize.y;
 
             Gizmos.DrawWireCube(pos, new Vector3(mBoard.tileSize.x * size.col, mBoard.tileSize.y * size.row, 0.0f));
+        }
+    }
+
+    void OnBoardAction(Board board, Board.Action act) {
+        switch(act) {
+            case Board.Action.PushRow:
+                Vector3 pos = transform.localPosition;
+                pos.y += board.tileSize.y;
+                transform.localPosition = pos;
+
+                mTilePos.row++;
+                break;
         }
     }
 

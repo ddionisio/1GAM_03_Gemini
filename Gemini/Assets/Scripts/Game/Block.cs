@@ -37,13 +37,13 @@ public class Block : MonoBehaviour {
     public tk2dAnimatedSprite icon;
     public tk2dSlicedSprite panel;
 
-    public M8.TilePos tilePos;
-    public M8.TilePos tileSize;
+    public M8.TilePos tilePos = M8.TilePos.zero;
+    public M8.TilePos tileSize = M8.TilePos.one;
     public M8.TilePos tileDir = M8.TilePos.one; //from bottom left used for traversing board based on tile size
 
     private Type mType = Type.NumTypes;
 
-    private State mState;
+    private State mState = State.NumStates;
 
     private Board mOwner;
     private int[] mIconClipIds;
@@ -110,7 +110,7 @@ public class Block : MonoBehaviour {
                 if(tileSize.col > 1) {
                     if(tileDir.col > 0) {
                         for(int c = 0; c < tileSize.col; c++) {
-                            Block blockDown = mOwner.table[rowDown, tilePos.col + c];
+                            Block blockDown = mOwner.table[rowDown][tilePos.col + c];
 
                             if(blockDown != null && blockDown.state != State.Fall) {
                                 return false;
@@ -119,7 +119,7 @@ public class Block : MonoBehaviour {
                     }
                     else {
                         for(int c = 0; c < tileSize.col; c++) {
-                            Block blockDown = mOwner.table[rowDown, tilePos.col - c];
+                            Block blockDown = mOwner.table[rowDown][tilePos.col - c];
 
                             if(blockDown != null) {// && blockDown.state != State.Fall) {
                                 return false;
@@ -130,7 +130,7 @@ public class Block : MonoBehaviour {
                     return true;
                 }
                 else {
-                    Block blockDown = mOwner.table[rowDown, tilePos.col];
+                    Block blockDown = mOwner.table[rowDown][tilePos.col];
 
                     return blockDown == null;// || blockDown.state == State.Fall;
                 }
@@ -192,8 +192,15 @@ public class Block : MonoBehaviour {
     }
 
     //called by board after spawning a block
-    public void Init(Board owner, Type type, int row, int col, int numRow, int numCol) {
+    public void Init(Board owner, Type type, int row, int col, int numRow, int numCol, State aState) {
+        //just in case
+        if(mOwner != null && mOwner != owner) {
+            RemoveTableReference();
+            mOwner.actCallback -= OnBoardAction;
+        }
+
         mOwner = owner;
+        mOwner.actCallback += OnBoardAction;
 
         Vector2 boardTileSize = mOwner.tileSize;
 
@@ -204,29 +211,49 @@ public class Block : MonoBehaviour {
 
         panel.dimensions = panelSize;
 
-        //set position
+        //set position, assume tileDir = 1, 1
         transform.localPosition = new Vector3(col * boardTileSize.x, row * boardTileSize.y, 0.0f);
 
         RefreshTile(false);
 
-        mState = State.NumStates;
+        this.type = type;
 
-        type = startType;
-
-        state = State.Idle;
+        state = aState;
     }
 
     //set the internal data properly, this is called for pre-added blocks on the board
-    public void Init(Board owner) {
+    public void Init(Board owner, State aState) {
+        //just in case
+        if(mOwner != null && mOwner != owner) {
+            RemoveTableReference();
+            mOwner.actCallback -= OnBoardAction;
+        }
+
         mOwner = owner;
+        mOwner.actCallback += OnBoardAction;
 
         RefreshTile(true);
 
-        mState = State.NumStates;
-
         type = startType;
 
-        state = State.Idle;
+        state = aState;
+    }
+
+    /// <summary>
+    /// Set the block within the board table reference with given row and col
+    /// </summary>
+    public void SetTilePosition(int row, int col) {
+        RemoveTableReference();
+
+        //set new indices
+        tilePos.row = row;
+        tilePos.col = col;
+
+        //refresh pixel position
+        SnapToGrid();
+
+        //put back on the table
+        SetTableReference();
     }
 
     /// <summary>
@@ -272,7 +299,7 @@ public class Block : MonoBehaviour {
     }
 
     /// <summary>
-    /// Call this during init
+    /// Call this during init, tile pos is based on local position in pixel space
     /// </summary>
     public void RefreshTile(bool snapToGrid) {
         Vector2 boardTileSize = mOwner.tileSize;
@@ -299,7 +326,7 @@ public class Block : MonoBehaviour {
         iconPos.y = panel.dimensions.y * 0.5f;
         icon.transform.localPosition = iconPos;
 
-        //set tile pos (row, col)
+        //set tile pos (row, col) based on pixel position
         //origin at center
         Vector2 pos = transform.localPosition;
         pos.x += boardTileSize.x * 0.5f * dir.x;
@@ -315,6 +342,9 @@ public class Block : MonoBehaviour {
         SetTableReference();
     }
 
+    /// <summary>
+    /// Refresh pixel position based on tile (row, col) position
+    /// </summary>
     public void SnapToGrid() {
         Vector2 pos = tilePos.ToVector2(mOwner.tileSize);
 
@@ -327,18 +357,29 @@ public class Block : MonoBehaviour {
         transform.localPosition = pos;
     }
 
+    void OnDestroy() {
+        if(mOwner != null) { //normally we are despawned, but just in case
+            mOwner.actCallback -= OnBoardAction;
+        }
+    }
+
     void OnSpawned() {
         //reset some data
         mType = Type.NumTypes;
         mState = State.NumStates;
         mIconClipIds = null;
+        transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
+        tilePos = M8.TilePos.zero;
         tileDir = M8.TilePos.one;
     }
 
     void OnDespawned() {
-        RemoveTableReference();
-        mOwner = null;
+        if(mOwner != null) {
+            RemoveTableReference();
+            mOwner.actCallback -= OnBoardAction;
+            mOwner = null;
+        }
     }
 
     void Awake() {
@@ -394,12 +435,39 @@ public class Block : MonoBehaviour {
         }
     }
 
+    void OnBoardAction(Board board, Board.Action act) {
+        switch(act) {
+            case Board.Action.PushRow:
+                RemoveTableReference();
+
+                //update our reference and move the visual
+                int prevRow = tilePos.row;
+
+                tilePos.row++;
+
+                SetTableReference();
+
+                //set pixel position
+                Vector3 pos = transform.localPosition;
+                pos.y += board.tileSize.y;
+                transform.localPosition = pos;
+
+                //we were previously generated from the bottom, set to idle
+                if(prevRow == -1) {
+                    state = State.Idle;
+                }
+                break;
+        }
+    }
+
     private void RemoveTableReference() {
         if(mOwner != null) {
             for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
-                for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
-                    if(mOwner.table[curR, curC] == this)
-                        mOwner.table[curR, curC] = null;
+                if(curR >= 0 && curR < mOwner.table.Length) {
+                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
+                        if(curC >= 0 && curC < mOwner.numCol && mOwner.table[curR][curC] == this)
+                            mOwner.table[curR][curC] = null;
+                    }
                 }
             }
         }
@@ -411,8 +479,11 @@ public class Block : MonoBehaviour {
     private void SetTableReference() {
         if(mOwner != null) {
             for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
-                for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
-                    mOwner.table[curR, curC] = this;
+                if(curR >= 0 && curR < mOwner.table.Length) {
+                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
+                        if(curC >= 0 && curC < mOwner.numCol)
+                            mOwner.table[curR][curC] = this;
+                    }
                 }
             }
         }
@@ -427,6 +498,7 @@ public class Block : MonoBehaviour {
 
     private void StartCurrentState() {
         switch(mState) {
+            case State.Wait:
             case State.Idle:
                 icon.Play(mIconClipIds[(int)SpriteState.Idle]);
                 break;

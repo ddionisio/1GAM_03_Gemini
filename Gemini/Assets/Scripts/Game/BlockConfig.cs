@@ -32,6 +32,12 @@ public class BlockConfig : MonoBehaviour {
 
     public BlockData[] blockData { get { return mBlockData; } }
 
+    public bool CheckMatch(Block.Type source, Block.Type target) {
+        //TODO: special blocks matching, like all-color match or something
+        //default: same type
+        return source == target;
+    }
+
     void OnDestroy() {
         mInstance = null;
     }
