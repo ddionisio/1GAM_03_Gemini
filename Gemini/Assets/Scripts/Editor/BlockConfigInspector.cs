@@ -109,6 +109,7 @@ public class BlockConfigInspector : Editor {
 
         M8.Editor.Utility.DrawSeparator();
 
+        data.destroyFlashDelay = EditorGUILayout.FloatField("Destroy Flash Delay", data.destroyFlashDelay);
         data.fallDelay = EditorGUILayout.FloatField("Fall Delay", data.fallDelay);
         data.fallSpeed = EditorGUILayout.FloatField("Fall Speed", data.fallSpeed);
     }

@@ -16,6 +16,8 @@ public class Block : MonoBehaviour {
         Idle,
         Fall,
         Rotate,
+        DestroyFlash,
+        DestroyWait,
         Destroy,
         Destroyed,
 
@@ -32,6 +34,15 @@ public class Block : MonoBehaviour {
         NumStates
     }
 
+    [System.Flags]
+    public enum Flag {
+        Chain = 0x1, //potential chain when matched
+        Match = 0x2, //tagged during block matching
+        RotateLock = 0x4, //can't rotate this block, sorry!
+        MatchLock = 0x8, //can't match anything, useless!
+        FallLock = 0x10, //can't fall, stuck!
+    }
+
     public Type startType = Type.NumTypes;
 
     public tk2dAnimatedSprite icon;
@@ -40,6 +51,8 @@ public class Block : MonoBehaviour {
     public M8.TilePos tilePos = M8.TilePos.zero;
     public M8.TilePos tileSize = M8.TilePos.one;
     public M8.TilePos tileDir = M8.TilePos.one; //from bottom left used for traversing board based on tile size
+
+    private static int mFallCounter = 0;
 
     private Type mType = Type.NumTypes;
 
@@ -50,7 +63,16 @@ public class Block : MonoBehaviour {
 
     private float mFallOfsY; //increment by fall speed, when it is >= board.tileSize.y, then update this block's table reference, continue
 
+    private Flag mFlags = (Flag)0;
+
+    public static int fallCounter { get { return mFallCounter; } }
+
     public Board owner { get { return mOwner; } }
+
+    public Flag flags {
+        get { return mFlags; }
+        set { mFlags = value; }
+    }
 
     public Type type {
         get { return mType; }
@@ -95,44 +117,46 @@ public class Block : MonoBehaviour {
 
     public bool canFall {
         get {
-            //get the row below the block depending on size
-            int rowDown;
+            if((mFlags & Flag.FallLock) == 0) {
+                //get the row below the block depending on size
+                int rowDown;
 
-            if(tileSize.row > 1 && tileDir.row < 0) {
-                rowDown = tilePos.row - tileSize.row;
-            }
-            else {
-                rowDown = tilePos.row - 1;
-            }
-
-            if(rowDown >= 0) {
-                //for long blocks, check each one in the column
-                if(tileSize.col > 1) {
-                    if(tileDir.col > 0) {
-                        for(int c = 0; c < tileSize.col; c++) {
-                            Block blockDown = mOwner.table[rowDown][tilePos.col + c];
-
-                            if(blockDown != null && blockDown.state != State.Fall) {
-                                return false;
-                            }
-                        }
-                    }
-                    else {
-                        for(int c = 0; c < tileSize.col; c++) {
-                            Block blockDown = mOwner.table[rowDown][tilePos.col - c];
-
-                            if(blockDown != null) {// && blockDown.state != State.Fall) {
-                                return false;
-                            }
-                        }
-                    }
-
-                    return true;
+                if(tileSize.row > 1 && tileDir.row < 0) {
+                    rowDown = tilePos.row - tileSize.row;
                 }
                 else {
-                    Block blockDown = mOwner.table[rowDown][tilePos.col];
+                    rowDown = tilePos.row - 1;
+                }
 
-                    return blockDown == null;// || blockDown.state == State.Fall;
+                if(rowDown >= 0) {
+                    //for long blocks, check each one in the column
+                    if(tileSize.col > 1) {
+                        if(tileDir.col > 0) {
+                            for(int c = 0; c < tileSize.col; c++) {
+                                Block blockDown = mOwner.table[rowDown][tilePos.col + c];
+
+                                if(blockDown != null && blockDown.state != State.Fall) {
+                                    return false;
+                                }
+                            }
+                        }
+                        else {
+                            for(int c = 0; c < tileSize.col; c++) {
+                                Block blockDown = mOwner.table[rowDown][tilePos.col - c];
+
+                                if(blockDown != null) {// && blockDown.state != State.Fall) {
+                                    return false;
+                                }
+                            }
+                        }
+
+                        return true;
+                    }
+                    else {
+                        Block blockDown = mOwner.table[rowDown][tilePos.col];
+
+                        return blockDown == null;// || blockDown.state == State.Fall;
+                    }
                 }
             }
 
@@ -143,7 +167,7 @@ public class Block : MonoBehaviour {
     public bool canRotate {
         get {
             //TODO: for special blocks that simply can't be rotated, locked or something
-            return state == State.Idle;
+            return (mFlags & Flag.RotateLock) == 0 ? state == State.Idle : false;
         }
     }
 
@@ -357,10 +381,18 @@ public class Block : MonoBehaviour {
         transform.localPosition = pos;
     }
 
-    void OnDestroy() {
-        if(mOwner != null) { //normally we are despawned, but just in case
-            mOwner.actCallback -= OnBoardAction;
+    public void Release() {
+        if(mOwner != null) {
+            mOwner.pool.Release(transform);
         }
+        else {
+            Destroy(gameObject);
+        }
+    }
+
+    void OnDestroy() {
+        //must not be from pool
+        OnDespawned();
     }
 
     void OnSpawned() {
@@ -372,14 +404,19 @@ public class Block : MonoBehaviour {
         transform.localRotation = Quaternion.identity;
         tilePos = M8.TilePos.zero;
         tileDir = M8.TilePos.one;
+        mFlags = (Flag)0;
     }
 
     void OnDespawned() {
+        state = State.NumStates;
+
         if(mOwner != null) {
             RemoveTableReference();
             mOwner.actCallback -= OnBoardAction;
             mOwner = null;
         }
+
+        mFlags = (Flag)0;
     }
 
     void Awake() {
@@ -428,9 +465,15 @@ public class Block : MonoBehaviour {
                         
                         state = State.Idle;
 
+                        mOwner.Eval(this);
+
                         //TODO: landing etc.
                     }
                 }
+                break;
+
+            case State.Destroy:
+                state = State.Destroyed;
                 break;
         }
     }
@@ -455,6 +498,8 @@ public class Block : MonoBehaviour {
                 //we were previously generated from the bottom, set to idle
                 if(prevRow == -1) {
                     state = State.Idle;
+
+                    mOwner.Eval(this);
                 }
                 break;
         }
@@ -494,6 +539,24 @@ public class Block : MonoBehaviour {
 
     private void EndCurrentState() {
         icon.Stop();
+
+        switch(mState) {
+            case State.Fall:
+                mFallCounter--;
+                break;
+
+            case State.DestroyFlash:
+                break;
+
+            case State.DestroyWait:
+                break;
+
+            case State.Destroy:
+                break;
+
+            case State.Destroyed:
+                break;
+        }
     }
 
     private void StartCurrentState() {
@@ -514,6 +577,21 @@ public class Block : MonoBehaviour {
                 SetTableReference();
 
                 mFallOfsY = 0.0f;
+
+                mFallCounter++;
+                break;
+
+            case State.DestroyFlash:
+                break;
+
+            case State.DestroyWait:
+                mFallOfsY = 0.0f;
+                break;
+
+            case State.Destroy:
+                break;
+
+            case State.Destroyed:
                 break;
         }
     }

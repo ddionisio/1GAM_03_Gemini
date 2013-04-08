@@ -19,11 +19,11 @@ public class BlockConfig : MonoBehaviour {
         
     public BlockInfo[] blockTypes;
 
-    //public tk2dAnimatedSprite
+    public float destroyFlashDelay;
 
     public float fallDelay;
     public float fallSpeed; //pixel/sec
-        
+            
     private static BlockConfig mInstance;
 
     private BlockData[] mBlockData;

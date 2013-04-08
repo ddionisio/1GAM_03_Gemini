@@ -48,35 +48,37 @@ public class RowBlockRising : MonoBehaviour {
     }
 
     void Update() {
-        switch(mState) {
-            case State.Rising:
-                mCurMoveTime += Time.deltaTime;
-                if(mCurMoveTime >= moveDelay) {
-                    Begin();
-                }
-                else {
-                    float t = mCurMoveTime / moveDelay;
-                    mHolderPos.y = mHolderStartY + t * (mHolderEndY - mHolderStartY);
-                    mBoard.blockHolder.localPosition = mHolderPos;
-                }
-                break;
-
-            case State.Wait:
-                mCountDown -= Time.deltaTime;
-                if(mCountDown <= 0.0f) {
-                    
-
-                    //check if game over
-                    if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
-                        mBoard.GameOver();
+        if(Block.fallCounter == 0) {
+            switch(mState) {
+                case State.Rising:
+                    mCurMoveTime += Time.deltaTime;
+                    if(mCurMoveTime >= moveDelay) {
+                        Begin();
                     }
                     else {
-                        EndCurrentState();
-                        mState = State.Rising;
-                        StartCurrentState();
+                        float t = mCurMoveTime / moveDelay;
+                        mHolderPos.y = mHolderStartY + t * (mHolderEndY - mHolderStartY);
+                        mBoard.blockHolder.localPosition = mHolderPos;
                     }
-                }
-                break;
+                    break;
+
+                case State.Wait:
+                    mCountDown -= Time.deltaTime;
+                    if(mCountDown <= 0.0f) {
+
+
+                        //check if game over
+                        if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
+                            mBoard.GameOver();
+                        }
+                        else {
+                            EndCurrentState();
+                            mState = State.Rising;
+                            StartCurrentState();
+                        }
+                    }
+                    break;
+            }
         }
     }
 

@@ -288,6 +288,9 @@ public class Cursor : MonoBehaviour {
                         mRotBlocks[i].transform.parent = mBoard.blockHolder;
                         mRotBlocks[i].state = Block.State.Idle;
                         mRotBlocks[i].SnapToGrid();
+
+                        mBoard.Eval(mRotBlocks[i]);
+
                         mRotBlocks[i] = null;
                     }
                 }
