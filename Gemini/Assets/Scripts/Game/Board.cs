@@ -171,8 +171,10 @@ public class Board : MonoBehaviour {
 
     //goes through blocks upwards or downwards and get the matches
     //also adds given block to output if it hasn't been added already
-    //return new rowCount
-    private int GetNeightborMatchesRowRecurse(Block block, List<Block> output, int rowCount, bool upwards) {
+    //return number of matches found
+    private int GetNeightborMatchesRowRecurse(Block block, List<Block> output, bool upwards) {
+        int rowCount = 0;
+
         BlockConfig blockConfig = BlockConfig.instance;
 
         Block.Type type = block.type;
@@ -201,8 +203,7 @@ public class Board : MonoBehaviour {
             for(int c = minCol; c <= maxCol; c++) {
                 Block b = table[r][c];
                 if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    rowCount++;
-                    GetNeightborMatchesRowRecurse(b, output, rowCount, upwards);
+                    rowCount = GetNeightborMatchesRowRecurse(b, output, upwards) + 1;
                 }
             }
         }
@@ -213,7 +214,9 @@ public class Board : MonoBehaviour {
     //goes through blocks left or right and get the matches
     //also adds given block to output if it hasn't been added already
     //return new colCount
-    private int GetNeightborMatchesColRecurse(Block block, List<Block> output, int colCount, bool leftward) {
+    private int GetNeightborMatchesColRecurse(Block block, List<Block> output, bool leftward) {
+        int colCount = 0;
+
         BlockConfig blockConfig = BlockConfig.instance;
 
         Block.Type type = block.type;
@@ -242,8 +245,7 @@ public class Board : MonoBehaviour {
             for(int r = minRow; r <= maxRow; r++) {
                 Block b = table[r][c];
                 if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    colCount++;
-                    GetNeightborMatchesColRecurse(b, output, colCount, leftward);
+                    colCount = GetNeightborMatchesColRecurse(b, output, leftward) + 1;
                 }
             }
         }
@@ -257,141 +259,39 @@ public class Board : MonoBehaviour {
     /// Returns the number of blocks added to output
     /// </summary>
     public int GetMatches(Block block, List<Block> output) {
-        BlockConfig blockConfig = BlockConfig.instance;
-
         int lastCount = output.Count;
-
-        Block.Type type = block.type;
-        int colDir = block.tileDir.col, rowDir = block.tileDir.row, col = block.tilePos.col, row = block.tilePos.row;
-        int sizeCol = block.tileSize.col, sizeRow = block.tileSize.row;
-
-        //vertical
-        int minCol, maxCol;
-        GetIndexRange(col, sizeCol, colDir, numCol, out minCol, out maxCol);
-
-        //add block to list
-        bool blockAdded = (block.flags & Block.Flag.Match) == 0;
-
-        //if it's already matched, it's guaranteed to be in output already
-        if(blockAdded) {
-            block.flags |= Block.Flag.Match;
-            output.Add(block);
-        }
 
         int lastAddIndex = output.Count - 1;
 
-        bool matchesFound = false;
-                                                
-        for(int c = minCol; c <= maxCol; c++) {
-            int rowCount = 1;//pre-add ourself
+        //check vertical
+        int rowCount = 1;
 
-            //check upwards
-            for(int r = rowDir > 0 ? row + sizeRow : row + 1; r < table.Length;) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    if((b.flags & Block.Flag.Match) == 0) {
-                        b.flags |= Block.Flag.Match;
-                        output.Add(b);
-                    }
+        rowCount += GetNeightborMatchesRowRecurse(block, output, true);
+        rowCount += GetNeightborMatchesRowRecurse(block, output, false);
 
-                    rowCount++;
-
-                    r += b.tileSize.row;
-                }
-                else
-                    break;
+        if(rowCount < 3) {
+            //clear out the added crap
+            for(int i = lastAddIndex + 1; i < output.Count; i++) {
+                output[i].flags ^= Block.Flag.Match;
             }
-
-            //check downwards
-            for(int r = rowDir > 0 ? row - 1 : row - sizeRow; r >= 0;) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    if((b.flags & Block.Flag.Match) == 0) {
-                        b.flags |= Block.Flag.Match;
-                        output.Add(b);
-                    }
-
-                    rowCount++;
-
-                    r -= b.tileSize.row;
-                }
-                else
-                    break;
-            }
-
-            if(rowCount >= 3) {
-                matchesFound = true;
-            }
-            else if(lastAddIndex < output.Count - 1) {
-                //clear out the added crap
-                for(int i = lastAddIndex + 1; i < output.Count; i++) {
-                    output[i].flags ^= Block.Flag.Match;
-                }
-                output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
-            }
-
+            output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
+        }
+        else {
             lastAddIndex = output.Count - 1;
         }
 
-        //horizontal
-        int minRow, maxRow;
-        GetIndexRange(row, sizeRow, rowDir, numRow, out minRow, out maxRow);
+        //check horizontal
+        int colCount = 1;
 
-        for(int r = minRow; r <= maxRow; r++) {
-            int colCount = 1;
+        colCount += GetNeightborMatchesColRecurse(block, output, true);
+        colCount += GetNeightborMatchesColRecurse(block, output, false);
 
-            //check right
-            for(int c = colDir > 0 ? col + sizeCol : col + 1; c < numCol;) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    if((b.flags & Block.Flag.Match) == 0) {
-                        b.flags |= Block.Flag.Match;
-                        output.Add(b);
-                    }
-
-                    colCount++;
-
-                    c += b.tileSize.col;
-                }
-                else
-                    break;
+        if(colCount < 3) {
+            //clear out the added crap
+            for(int i = lastAddIndex + 1; i < output.Count; i++) {
+                output[i].flags ^= Block.Flag.Match;
             }
-
-            //check left
-            for(int c = rowDir > 0 ? col - 1 : col - sizeCol; c >= 0;) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    if((b.flags & Block.Flag.Match) == 0) {
-                        b.flags |= Block.Flag.Match;
-                        output.Add(b);
-                    }
-
-                    colCount++;
-
-                    c -= b.tileSize.col;
-                }
-                else
-                    break;
-            }
-
-            if(colCount >= 3) {
-                matchesFound = true;
-            }
-            else if(lastAddIndex < output.Count - 1) {
-                //clear out the added crap
-                for(int i = lastAddIndex + 1; i < output.Count; i++) {
-                    output[i].flags ^= Block.Flag.Match;
-                }
-                output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
-            }
-
-            lastAddIndex = output.Count - 1;
-        }
-
-        if(!matchesFound && blockAdded) {
-            //remove block from output since nothing matched
-            block.flags ^= Block.Flag.Match;
-            output.RemoveAt(output.Count-1);
+            output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
         }
 
         return output.Count - lastCount;
