@@ -20,6 +20,7 @@ public class RowBlockRising : MonoBehaviour {
     public float longBlockChance; //[0, 100] percent
 
     private Board mBoard = null;
+    private BlockDestroyer mDestroyer = null;
     
     private State mState = State.None;
     private float mCountDown;
@@ -45,10 +46,14 @@ public class RowBlockRising : MonoBehaviour {
     void Awake() {
         mBoard = GetComponent<Board>();
         mBoard.actCallback += OnBoardAction;
+
+        mDestroyer = GetComponent<BlockDestroyer>();
     }
 
     void Update() {
-        if(Block.fallCounter == 0) {
+        bool destroyActive = mDestroyer != null ? mDestroyer.numActive > 0 : false;
+
+        if(Block.fallCounter == 0 && !destroyActive) {
             switch(mState) {
                 case State.Rising:
                     mCurMoveTime += Time.deltaTime;

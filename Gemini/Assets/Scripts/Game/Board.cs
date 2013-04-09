@@ -8,15 +8,10 @@ public class Board : MonoBehaviour {
         PushRow,
         GameOver,
     }
-
-    public struct MatchData {
-        public int chain;
-    }
-
+        
     public delegate void ActionCallback(Board board, Action act);
     public delegate void EvalBlockCallback(Block block);
-    public delegate void ProcessMatchCallback(List<Block> blocks, MatchData dat);
-        
+            
     public const string BlockPoolType = "block";
         
     public string blockPickGroup = BlockRandomizer.defaultGroup;
@@ -29,8 +24,7 @@ public class Board : MonoBehaviour {
 
     public event ActionCallback actCallback;
     public event EvalBlockCallback evalCallback;
-    public event ProcessMatchCallback processMatchesCallback; //called after matches are found
-            
+                
     private PoolController mBlockPool;
     private Transform mBlockHolder; //this is where blocks are put in, cursor is also here
 
@@ -82,13 +76,7 @@ public class Board : MonoBehaviour {
         if(evalCallback != null)
             evalCallback(b);
     }
-
-    public void ProcessMatchedBlocks(List<Block> matchedList, MatchData data) {
-        if(processMatchesCallback != null) {
-            processMatchesCallback(matchedList, data);
-        }
-    }
-
+    
     public void GameOver() {
         //let everyone know, a block should know about it and update itself, also cursor, hopefully!
         if(actCallback != null)
@@ -398,7 +386,6 @@ public class Board : MonoBehaviour {
     void OnDestroy() {
         actCallback = null;
         evalCallback = null;
-        processMatchesCallback = null;
     }
     
     void Awake() {

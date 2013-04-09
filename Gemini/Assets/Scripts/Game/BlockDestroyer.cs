@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 public class BlockDestroyer : MonoBehaviour {
 
+    public event Board.EvalBlockCallback destroyBlockCallback;
+
     private class GroupData {
         public List<Block> blocks;
 
@@ -17,17 +19,27 @@ public class BlockDestroyer : MonoBehaviour {
     }
 
     private Board mBoard;
+    private BoardEvaluator mBoardEval;
 
     private Queue<GroupData> mProcessBuffer;
 
+    private int mNumActive = 0;
+
+    public int numActive { get { return mNumActive; } }
+
     void OnDestroy() {
-        if(mBoard != null)
-            mBoard.processMatchesCallback -= OnProcessMatchBlocks;
+        if(mBoardEval != null)
+            mBoardEval.processMatchesCallback -= OnProcessMatchBlocks;
+
+        destroyBlockCallback = null;
     }
 
     void Awake() {
         mBoard = GetComponent<Board>();
-        mBoard.processMatchesCallback += OnProcessMatchBlocks;
+        mBoardEval = GetComponent<BoardEvaluator>();
+
+        if(mBoardEval != null)
+            mBoardEval.processMatchesCallback += OnProcessMatchBlocks;
     }
 
     // Use this for initialization
@@ -43,7 +55,7 @@ public class BlockDestroyer : MonoBehaviour {
         }
     }
 
-    void OnProcessMatchBlocks(List<Block> blocks, Board.MatchData dat) {
+    void OnProcessMatchBlocks(List<Block> blocks, BoardEvaluator.MatchData dat) {
         if(mProcessBuffer.Count > 0) {
             GroupData group = mProcessBuffer.Dequeue();
             group.Init(blocks);
@@ -55,6 +67,8 @@ public class BlockDestroyer : MonoBehaviour {
     }
 
     IEnumerator RunBlocks(GroupData group) {
+        mNumActive++;
+
         BlockConfig blockConfig = BlockConfig.instance;
 
         List<Block> blocks = group.blocks;
@@ -79,15 +93,25 @@ public class BlockDestroyer : MonoBehaviour {
             }
 
             b.state = Block.State.Destroyed;
-        }
 
+            //callback for destroyed block
+            if(destroyBlockCallback != null) {
+                destroyBlockCallback(b);
+            }
+        }
+                
         //kill off blocks
         for(int i = 0; i < blocks.Count; i++) {
-            blocks[i].Release();
+            Block b = blocks[i];
+            b.Release();
         }
 
         blocks.Clear();
 
+        yield return new WaitForFixedUpdate();
+
         mProcessBuffer.Enqueue(group);
+
+        mNumActive--;
     }
 }

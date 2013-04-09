@@ -2,10 +2,11 @@ using UnityEngine;
 using System.Collections;
 
 public class PlayerController : MonoBehaviour {
+    public int player;
+
     public Cursor cursor;
 
     private bool mInputEnabled = false;
-    //TODO: set which player input: player1, player2, etc.
 
     void OnDestroy() {
         InputEnable(false);
@@ -21,8 +22,8 @@ public class PlayerController : MonoBehaviour {
         if(mInputEnabled && (cursor.state == Cursor.State.Move || cursor.state == Cursor.State.None)) {
             InputManager input = Main.instance.input;
 
-            float x = input.GetAxis(InputAction.Horizontal);
-            float y = input.GetAxis(InputAction.Vertical);
+            float x = input.GetAxis(player, InputAction.Horizontal);
+            float y = input.GetAxis(player, InputAction.Vertical);
 
             if(x != 0.0f || y != 0.0f) {
                 if(y == 0.0f || Mathf.Abs(x) > Mathf.Abs(y)) {
@@ -64,14 +65,14 @@ public class PlayerController : MonoBehaviour {
 
         if(input != null) {
             if(yes) {
-                input.AddButtonCall(InputAction.RotateLeft, OnRotateLeft);
-                input.AddButtonCall(InputAction.RotateRight, OnRotateRight);
-                input.AddButtonCall(InputAction.Boost, OnBoost);
+                input.AddButtonCall(player, InputAction.RotateLeft, OnRotateLeft);
+                input.AddButtonCall(player, InputAction.RotateRight, OnRotateRight);
+                input.AddButtonCall(player, InputAction.Boost, OnBoost);
             }
             else {
-                input.RemoveButtonCall(InputAction.RotateLeft, OnRotateLeft);
-                input.RemoveButtonCall(InputAction.RotateRight, OnRotateRight);
-                input.RemoveButtonCall(InputAction.Boost, OnBoost);
+                input.RemoveButtonCall(player, InputAction.RotateLeft, OnRotateLeft);
+                input.RemoveButtonCall(player, InputAction.RotateRight, OnRotateRight);
+                input.RemoveButtonCall(player, InputAction.Boost, OnBoost);
             }
 
             mInputEnabled = yes;

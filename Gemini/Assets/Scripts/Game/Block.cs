@@ -171,6 +171,30 @@ public class Block : MonoBehaviour {
         }
     }
 
+    public int minRow {
+        get {
+            return tileSize.row > 1 && tileDir.row < 0 ? tilePos.row - (tileSize.row - 1) : tilePos.row;
+        }
+    }
+
+    public int minCol {
+        get {
+            return tileSize.col > 1 && tileDir.col < 0 ? tilePos.col - (tileSize.col - 1) : tilePos.col;
+        }
+    }
+
+    public int maxRow {
+        get {
+            return tileSize.row > 1 && tileDir.row > 0 ? tilePos.row + tileSize.row - 1 : tilePos.row;
+        }
+    }
+
+    public int maxCol {
+        get {
+            return tileSize.col > 1 && tileDir.col > 0 ? tilePos.col + tileSize.col - 1 : tilePos.col;
+        }
+    }
+
     //assumes given pos is bottom-left, ie. dir = [1, 1]
     public bool IsContainedIn(M8.TilePos pos, M8.TilePos size) {
         bool rowContained = false;
@@ -465,9 +489,11 @@ public class Block : MonoBehaviour {
                         
                         state = State.Idle;
 
-                        mOwner.Eval(this);
-
                         //TODO: landing etc.
+
+                        mFlags |= Flag.Chain;
+
+                        mOwner.Eval(this);
                     }
                 }
                 break;
@@ -541,6 +567,9 @@ public class Block : MonoBehaviour {
         icon.Stop();
 
         switch(mState) {
+            case State.Idle:
+                break;
+
             case State.Fall:
                 mFallCounter--;
                 break;
@@ -566,6 +595,10 @@ public class Block : MonoBehaviour {
                 icon.Play(mIconClipIds[(int)SpriteState.Idle]);
                 break;
 
+            case State.Rotate:
+                mFlags &= ~Flag.Chain;
+                break;
+
             case State.Fall:
                 icon.Play(mIconClipIds[(int)SpriteState.Fall]);
 
@@ -579,6 +612,8 @@ public class Block : MonoBehaviour {
                 mFallOfsY = 0.0f;
 
                 mFallCounter++;
+
+                mFlags &= ~Flag.Chain;
                 break;
 
             case State.DestroyFlash:
