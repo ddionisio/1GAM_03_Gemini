@@ -106,7 +106,7 @@ public class RowBlockRising : MonoBehaviour {
 
     void OnBoardAction(Board board, Board.Action act) {
         switch(act) {
-            case Board.Action.Begin:
+            case Board.Action.Init:
                 GenerateBlocks();
                 Begin();
                 break;

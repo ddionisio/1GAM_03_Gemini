@@ -3,10 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 
 public class Board : MonoBehaviour {
+
     public enum Action {
-        Begin,
-        PushRow,
-        GameOver,
+        Init, //called after board is initialized on start
+        Activate, //when the board becomes active, game starts
+        PushRow, //request to push upwards
+        GameOver, //when a condition fails based on certain rules
     }
         
     public delegate void ActionCallback(Board board, Action act);
@@ -72,6 +74,20 @@ public class Board : MonoBehaviour {
             max = maxCount - 1;
     }
 
+    public void Activate() {
+        //go through current active blocks on board and set state to Activate
+        foreach(Transform block in mBlockHolder) {
+            Block b = block.GetComponent<Block>();
+            if(b != null)
+                b.state = Block.State.Activate;
+        }
+
+        if(actCallback != null) {
+            actCallback(this, Action.Activate);
+        }
+    }
+
+    //block is ready for evaluation, this is after it lands, rotate, etc.
     public void Eval(Block b) {
         if(evalCallback != null)
             evalCallback(b);
@@ -411,11 +427,13 @@ public class Board : MonoBehaviour {
         foreach(Transform block in mBlockHolder) {
             Block b = block.GetComponent<Block>();
             if(b != null)
-                b.Init(this, Block.State.Idle);
+                b.Init(this, Block.State.Wait);
         }
 
-        if(actCallback != null)
-            actCallback(this, Action.Begin);
+        //wait until activate
+        mBlockHolder.gameObject.SetActive(false);
+
+        ActDelay(Action.Init);
     }
 
     // Update is called once per frame
@@ -436,6 +454,13 @@ public class Board : MonoBehaviour {
                 }
             }
         }
+    }
+
+    private IEnumerator ActDelay(Action act) {
+        yield return new WaitForFixedUpdate();
+
+        if(actCallback != null)
+            actCallback(this, act);
     }
 
     private void ShuffleLongBlocks(int count) {

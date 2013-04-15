@@ -5,17 +5,20 @@ public class Block : MonoBehaviour {
     public enum Type {
         Fire,
         Earth,
+        Metal,
         Water,
-        Air,
+        Wood,
 
         NumTypes
     }
 
     public enum State {
         Wait,
+        Activate, //board is ready, show yourself
         Idle,
         Fall,
         Rotate,
+
         DestroyFlash,
         DestroyWait,
         Destroy,
@@ -30,6 +33,7 @@ public class Block : MonoBehaviour {
         Fall,
         Land,
         Destroy,
+        Danger,
 
         NumStates
     }
