@@ -5,7 +5,6 @@ using System.Collections;
 public class RowBlockRising : MonoBehaviour {
     public enum State {
         None,
-        Wait,
         Rising,
         Danger,
         Boost,
@@ -15,10 +14,9 @@ public class RowBlockRising : MonoBehaviour {
 
     public int numPowerPerRow = 2;
 
-    public float waitDelay;
-    public float moveDelay;
+    public float moveSpeed;
+    public float boostSpeed;
     public float dangerDelay;
-    public float boostDelay;
     
     private Board mBoard = null;
     private BlockDestroyer mDestroyer = null;
@@ -26,12 +24,9 @@ public class RowBlockRising : MonoBehaviour {
     private State mState = State.None;
     private float mCountDown;
 
-    private Vector3 mHolderPos;
-    private float mHolderStartY;
-    private float mHolderEndY;
-    private float mCurMoveTime;
+    private float mYOfs;
 
-    private float mMoveDelay;
+    private float mCurSpeed;
 
     private Block.Type[] mPowerBlockInserts;
     private int mCurPowerBlockInd = 0;
@@ -42,24 +37,16 @@ public class RowBlockRising : MonoBehaviour {
         }
         set {
             if(value) {
-                switch(mState) {
-                    case State.Wait:
-                        EndCurrentState();
-                        mState = State.Boost;
-                        StartCurrentState();
-                        break;
-
-                    case State.Rising:
-                        //change delay and state
-                        mMoveDelay = boostDelay;
-                        mState = State.Boost;
-                        break;
+                if(mState == State.Rising) {
+                    //change speed and state
+                    mCurSpeed = boostSpeed;
+                    mState = State.Boost;
                 }
             }
             else {
                 if(mState == State.Boost) {
                     //return to rising
-                    mMoveDelay = moveDelay;
+                    mCurSpeed = moveSpeed;
                     mState = State.Rising;
                 }
             }
@@ -68,7 +55,7 @@ public class RowBlockRising : MonoBehaviour {
 
     public void Begin() {
         EndCurrentState();
-        mState = mBoard.CheckBlocksRow(mBoard.numRow - 1) ? State.Danger : State.Wait;
+        mState = mBoard.CheckBlocksRow(mBoard.numRow - 1) ? State.Danger : State.Rising;
         StartCurrentState();
     }
 
@@ -113,16 +100,6 @@ public class RowBlockRising : MonoBehaviour {
                     }
                     break;
 
-                case State.Wait:
-                    mCountDown -= Time.deltaTime;
-                    if(mCountDown <= 0.0f) {
-                        //check if game over
-                        EndCurrentState();
-                        mState = mBoard.CheckBlocksRow(mBoard.numRow - 1) ? State.Danger : State.Rising;
-                        StartCurrentState();
-                    }
-                    break;
-
                 case State.Danger:
                     //if no longer danger, start in wait again
                     if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
@@ -133,9 +110,7 @@ public class RowBlockRising : MonoBehaviour {
                         }
                     }
                     else {
-                        EndCurrentState();
-                        mState = State.Wait;
-                        StartCurrentState();
+                        Begin();
                     }
                     break;
             }
@@ -187,61 +162,48 @@ public class RowBlockRising : MonoBehaviour {
                 //push up the row
                 mBoard.PushRow();
 
-                mHolderPos.y = mHolderStartY;
-                mBoard.blockHolder.localPosition = mHolderPos;
+                mYOfs = mYOfs > mBoard.tileSize.y ? mYOfs - mBoard.tileSize.y : 0.0f;
+
+                Vector3 holderPos = mBoard.blockHolder.localPosition;
+                holderPos.y = 0.0f;
+                mBoard.blockHolder.localPosition = holderPos;
                 break;
         }
     }
 
     void StartCurrentState() {
         switch(mState) {
-            case State.Wait:
-                mCountDown = waitDelay;
-                break;
-
             case State.Danger:
                 mCountDown = dangerDelay;
                 break;
 
             case State.Rising:
-                RisePrep(moveDelay);
+                RisePrep(moveSpeed);
                 break;
 
             case State.Boost:
-                RisePrep(boostDelay);
+                RisePrep(boostSpeed);
                 break;
         }
     }
 
-    private void RisePrep(float delay) {
+    private void RisePrep(float speed) {
         //generate a new one
         GenerateBlocks();
-
-        //make the board rise starting one row below
-        mHolderPos = mBoard.blockHolder.localPosition;
-
-        mHolderStartY = mHolderPos.y;
-        mHolderEndY = mHolderPos.y + mBoard.tileSize.y;
-
-        mHolderPos.y = mHolderStartY;
-
-        mBoard.blockHolder.localPosition = mHolderPos;
-
-        mCurMoveTime = 0.0f;
-
-        mMoveDelay = delay;
+        mYOfs = 0.0f;
+        mCurSpeed = speed;
     }
 
     //returns true if done
     private bool RiseMove() {
-        mCurMoveTime += Time.deltaTime;
-        if(mCurMoveTime >= mMoveDelay) {
+        mYOfs += mCurSpeed*Time.deltaTime;
+        if(mYOfs >= mBoard.tileSize.y) {
             return true;
         }
         else {
-            float t = mCurMoveTime / mMoveDelay;
-            mHolderPos.y = Mathf.Round(mHolderStartY + t * (mHolderEndY - mHolderStartY));
-            mBoard.blockHolder.localPosition = mHolderPos;
+            Vector3 holderPos = mBoard.blockHolder.localPosition;
+            holderPos.y = Mathf.Round(mYOfs);
+            mBoard.blockHolder.localPosition = holderPos;
         }
 
         return false;
