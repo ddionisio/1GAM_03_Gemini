@@ -6,34 +6,69 @@ public class RowBlockRising : MonoBehaviour {
     public enum State {
         None,
         Wait,
-        Rising
+        Rising,
+        Danger,
+        Boost,
     }
 
-    public const int longBlockChanceWeight = 100;
+    public Block.Type[] powerBlocks;
+
+    public int numPowerPerRow = 2;
 
     public float waitDelay;
     public float moveDelay;
-
-    public int numMinLongBlocks; //2x1 blocks
-    public int numMaxLongBlocks; //2x1 blocks
-
-    public float longBlockChance; //[0, 100] percent
-
+    public float dangerDelay;
+    public float boostDelay;
+    
     private Board mBoard = null;
     private BlockDestroyer mDestroyer = null;
     
     private State mState = State.None;
     private float mCountDown;
-    private float mCountDownStart;
 
     private Vector3 mHolderPos;
     private float mHolderStartY;
     private float mHolderEndY;
     private float mCurMoveTime;
-        
+
+    private float mMoveDelay;
+
+    private Block.Type[] mPowerBlockInserts;
+    private int mCurPowerBlockInd = 0;
+
+    public bool boost {
+        get {
+            return mState == State.Boost;
+        }
+        set {
+            if(value) {
+                switch(mState) {
+                    case State.Wait:
+                        EndCurrentState();
+                        mState = State.Boost;
+                        StartCurrentState();
+                        break;
+
+                    case State.Rising:
+                        //change delay and state
+                        mMoveDelay = boostDelay;
+                        mState = State.Boost;
+                        break;
+                }
+            }
+            else {
+                if(mState == State.Boost) {
+                    //return to rising
+                    mMoveDelay = moveDelay;
+                    mState = State.Rising;
+                }
+            }
+        }
+    }
+
     public void Begin() {
         EndCurrentState();
-        mState = State.Wait;
+        mState = mBoard.CheckBlocksRow(mBoard.numRow - 1) ? State.Danger : State.Wait;
         StartCurrentState();
     }
 
@@ -47,40 +82,60 @@ public class RowBlockRising : MonoBehaviour {
         mBoard = GetComponent<Board>();
         mBoard.actCallback += OnBoardAction;
 
+        mPowerBlockInserts = new Block.Type[numPowerPerRow];
+
         mDestroyer = GetComponent<BlockDestroyer>();
     }
 
     void Update() {
         bool destroyActive = mDestroyer != null ? mDestroyer.numActive > 0 : false;
 
-        if(Block.fallCounter == 0 && !destroyActive) {
+        if(mBoard.fallCounter == 0 && !destroyActive) {
             switch(mState) {
                 case State.Rising:
-                    mCurMoveTime += Time.deltaTime;
-                    if(mCurMoveTime >= moveDelay) {
+                    if(RiseMove()) {
                         Begin();
                     }
-                    else {
-                        float t = mCurMoveTime / moveDelay;
-                        mHolderPos.y = mHolderStartY + t * (mHolderEndY - mHolderStartY);
-                        mBoard.blockHolder.localPosition = mHolderPos;
+                    break;
+
+                case State.Boost:
+                    if(RiseMove()) {
+                        EndCurrentState();
+
+                        if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
+                            //gameover, user should have released boost!
+                            mState = State.None;
+                            mBoard.GameOver();
+                        }
+                        else {
+                            StartCurrentState();
+                        }
                     }
                     break;
 
                 case State.Wait:
                     mCountDown -= Time.deltaTime;
                     if(mCountDown <= 0.0f) {
-
-
                         //check if game over
-                        if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
+                        EndCurrentState();
+                        mState = mBoard.CheckBlocksRow(mBoard.numRow - 1) ? State.Danger : State.Rising;
+                        StartCurrentState();
+                    }
+                    break;
+
+                case State.Danger:
+                    //if no longer danger, start in wait again
+                    if(mBoard.CheckBlocksRow(mBoard.numRow - 1)) {
+                        mCountDown -= Time.deltaTime;
+                        if(mCountDown <= 0.0f) {
+                            mState = State.None;
                             mBoard.GameOver();
                         }
-                        else {
-                            EndCurrentState();
-                            mState = State.Rising;
-                            StartCurrentState();
-                        }
+                    }
+                    else {
+                        EndCurrentState();
+                        mState = State.Wait;
+                        StartCurrentState();
                     }
                     break;
             }
@@ -107,8 +162,14 @@ public class RowBlockRising : MonoBehaviour {
     void OnBoardAction(Board board, Board.Action act) {
         switch(act) {
             case Board.Action.Init:
-                GenerateBlocks();
-                Begin();
+                break;
+
+            case Board.Action.Activate:
+                mState = State.None;
+                break;
+
+            case Board.Action.StartGame:
+                Begin(); //start moving
                 break;
 
             case Board.Action.GameOver:
@@ -121,8 +182,12 @@ public class RowBlockRising : MonoBehaviour {
 
     void EndCurrentState() {
         switch(mState) {
+            case State.Boost:
             case State.Rising:
-                mHolderPos.y = mHolderEndY;
+                //push up the row
+                mBoard.PushRow();
+
+                mHolderPos.y = mHolderStartY;
                 mBoard.blockHolder.localPosition = mHolderPos;
                 break;
         }
@@ -131,36 +196,71 @@ public class RowBlockRising : MonoBehaviour {
     void StartCurrentState() {
         switch(mState) {
             case State.Wait:
-                mCountDownStart = waitDelay;
+                mCountDown = waitDelay;
+                break;
+
+            case State.Danger:
+                mCountDown = dangerDelay;
                 break;
 
             case State.Rising:
-                //push up the row
-                mBoard.PushRow();
+                RisePrep(moveDelay);
+                break;
 
-                //generate a new one
-                GenerateBlocks();
-
-                //make the board rise starting one row below
-                mHolderPos = mBoard.blockHolder.localPosition;
-                
-                mHolderStartY = mHolderPos.y - mBoard.tileSize.y;
-                mHolderEndY = mHolderPos.y;
-
-                mHolderPos.y = mHolderStartY;
-
-                mBoard.blockHolder.localPosition = mHolderPos;
-
-                mCurMoveTime = 0.0f;
+            case State.Boost:
+                RisePrep(boostDelay);
                 break;
         }
+    }
 
-        mCountDown = mCountDownStart;
+    private void RisePrep(float delay) {
+        //generate a new one
+        GenerateBlocks();
+
+        //make the board rise starting one row below
+        mHolderPos = mBoard.blockHolder.localPosition;
+
+        mHolderStartY = mHolderPos.y;
+        mHolderEndY = mHolderPos.y + mBoard.tileSize.y;
+
+        mHolderPos.y = mHolderStartY;
+
+        mBoard.blockHolder.localPosition = mHolderPos;
+
+        mCurMoveTime = 0.0f;
+
+        mMoveDelay = delay;
+    }
+
+    //returns true if done
+    private bool RiseMove() {
+        mCurMoveTime += Time.deltaTime;
+        if(mCurMoveTime >= mMoveDelay) {
+            return true;
+        }
+        else {
+            float t = mCurMoveTime / mMoveDelay;
+            mHolderPos.y = Mathf.Round(mHolderStartY + t * (mHolderEndY - mHolderStartY));
+            mBoard.blockHolder.localPosition = mHolderPos;
+        }
+
+        return false;
+    }
+
+    private Block.Type NextPowerBlock() {
+        Block.Type ret = powerBlocks[mCurPowerBlockInd];
+        mCurPowerBlockInd++;
+        if(mCurPowerBlockInd == powerBlocks.Length)
+            mCurPowerBlockInd = 0;
+        return ret;
     }
 
     private void GenerateBlocks() {
-        int numLong = Random.Range(0.0f, 100.0f) < longBlockChance ? Random.Range(numMinLongBlocks, numMaxLongBlocks + 1) : 0;
+        //set power blocks to insert
+        for(int i = 0; i < numPowerPerRow; i++) {
+            mPowerBlockInserts[i] = NextPowerBlock();
+        }
 
-        mBoard.GenerateRow(-1, numLong, Block.State.Wait, true);
+        mBoard.GenerateRow(-1, Block.State.Wait, true, mPowerBlockInserts);
     }
 }

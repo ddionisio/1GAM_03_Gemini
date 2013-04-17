@@ -19,7 +19,6 @@ public class BlockDestroyer : MonoBehaviour {
     }
 
     private Board mBoard;
-    private BoardEvaluator mBoardEval;
 
     private Queue<GroupData> mProcessBuffer;
 
@@ -28,18 +27,16 @@ public class BlockDestroyer : MonoBehaviour {
     public int numActive { get { return mNumActive; } }
 
     void OnDestroy() {
-        if(mBoardEval != null)
-            mBoardEval.processMatchesCallback -= OnProcessMatchBlocks;
+        if(mBoard != null)
+            mBoard.processMatchesCallback -= OnProcessMatchBlocks;
 
         destroyBlockCallback = null;
     }
 
     void Awake() {
         mBoard = GetComponent<Board>();
-        mBoardEval = GetComponent<BoardEvaluator>();
 
-        if(mBoardEval != null)
-            mBoardEval.processMatchesCallback += OnProcessMatchBlocks;
+        mBoard.processMatchesCallback += OnProcessMatchBlocks;
     }
 
     // Use this for initialization
@@ -55,7 +52,7 @@ public class BlockDestroyer : MonoBehaviour {
         }
     }
 
-    void OnProcessMatchBlocks(List<Block> blocks, BoardEvaluator.MatchData dat) {
+    void OnProcessMatchBlocks(List<Block> blocks, Board.MatchData dat) {
         if(mProcessBuffer.Count > 0) {
             GroupData group = mProcessBuffer.Dequeue();
             group.Init(blocks);

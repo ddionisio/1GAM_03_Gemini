@@ -4,12 +4,18 @@ using System.Collections;
 public class PlayerController : MonoBehaviour {
     public int player;
 
-    public Cursor cursor;
+    public Board board;
+
+    private RowBlockRising mBlockRiser = null;
 
     private bool mInputEnabled = false;
 
     void OnDestroy() {
         InputEnable(false);
+    }
+
+    void Awake() {
+        mBlockRiser = board.GetComponent<RowBlockRising>();
     }
 
     // Use this for initialization
@@ -19,6 +25,8 @@ public class PlayerController : MonoBehaviour {
     }
 
     void Update() {
+        Cursor cursor = board.cursor;
+
         if(mInputEnabled && (cursor.state == Cursor.State.Move || cursor.state == Cursor.State.None)) {
             InputManager input = Main.instance.input;
 
@@ -47,17 +55,25 @@ public class PlayerController : MonoBehaviour {
 
     void OnRotateLeft(InputManager.Info data) {
         if(data.state == InputManager.State.Pressed) {
-            cursor.Rotate(Cursor.RotateDir.CounterClockwise);
+            board.cursor.Rotate(Cursor.RotateDir.CounterClockwise);
         }
     }
 
     void OnRotateRight(InputManager.Info data) {
         if(data.state == InputManager.State.Pressed) {
-            cursor.Rotate(Cursor.RotateDir.Clockwise);
+            board.cursor.Rotate(Cursor.RotateDir.Clockwise);
         }
     }
 
     void OnBoost(InputManager.Info data) {
+        if(mBlockRiser != null) {
+            if(data.state == InputManager.State.Pressed) {
+                mBlockRiser.boost = true;
+            }
+            else if(data.state == InputManager.State.Released) {
+                mBlockRiser.boost = false;
+            }
+        }
     }
 
     private void InputEnable(bool yes) {

@@ -6,29 +6,41 @@ public class Board : MonoBehaviour {
 
     public enum Action {
         Init, //called after board is initialized on start
-        Activate, //when the board becomes active, game starts
+        Activate, //when the board becomes active
+        StartGame, //the game begins, usually after countdown ends, this is called
         PushRow, //request to push upwards
         GameOver, //when a condition fails based on certain rules
+        ExitGame, //when we are exiting the scene, start fading shit out
     }
-        
+
+    public struct MatchData {
+        public int chain;
+    }
+                
     public delegate void ActionCallback(Board board, Action act);
     public delegate void EvalBlockCallback(Block block);
+    public delegate void ProcessMatchCallback(List<Block> blocks, MatchData dat);
             
     public const string BlockPoolType = "block";
         
     public string blockPickGroup = BlockRandomizer.defaultGroup;
-    public string longBlockPickGroup = BlockRandomizer.defaultGroup;
 
     public int numRow;
     public int numCol;
 
     public Vector2 tileSize;
 
+    public string enterAnimation;
+    public string exitAnimation;
+
     public event ActionCallback actCallback;
     public event EvalBlockCallback evalCallback;
+    public event ProcessMatchCallback processMatchesCallback; //called after matches are found
                 
     private PoolController mBlockPool;
     private Transform mBlockHolder; //this is where blocks are put in, cursor is also here
+
+    private Cursor mCursor;
 
     private int mMaxBlocks;
 
@@ -37,14 +49,19 @@ public class Board : MonoBehaviour {
     /// </summary>
     private Block[][] mTable;
 
-    private bool[] mLongBlockGen;
-
     private BlockRandomizer mBlockTypePicker;
-    private BlockRandomizer mLongBlockTypePicker;
+
+    private int mFallCounter = 0;
+
+    private Block.Type[] mRowInserts;
+
+    public Cursor cursor { get { return mCursor; } }
 
     public int maxBlocks { get { return mMaxBlocks; } }
 
     public Transform blockHolder { get { return mBlockHolder; } }
+
+    public int fallCounter { get { return mFallCounter; } }
 
     /// <summary>
     /// [row, col]
@@ -74,7 +91,12 @@ public class Board : MonoBehaviour {
             max = maxCount - 1;
     }
 
+    /// <summary>
+    /// Call this after board is ready, e.g. after board enter animation
+    /// </summary>
     public void Activate() {
+        mBlockHolder.gameObject.SetActive(true);
+
         //go through current active blocks on board and set state to Activate
         foreach(Transform block in mBlockHolder) {
             Block b = block.GetComponent<Block>();
@@ -87,13 +109,39 @@ public class Board : MonoBehaviour {
         }
     }
 
+    /// <summary>
+    /// After activate, some other crap may be shown, normally that's the countdown, so countdown will call this when the game officially starts
+    /// </summary>
+    public void StartGame() {
+        if(actCallback != null) {
+            actCallback(this, Action.StartGame);
+        }
+    }
+
+    public void ExitGame() {
+        if(actCallback != null) {
+            actCallback(this, Action.ExitGame);
+        }
+
+        if(animation != null && !string.IsNullOrEmpty(exitAnimation)) {
+            animation.Play(exitAnimation);
+        }
+    }
+
     //block is ready for evaluation, this is after it lands, rotate, etc.
     public void Eval(Block b) {
         if(evalCallback != null)
             evalCallback(b);
     }
+
+    public void ProcessMatches(List<Block> matches, MatchData data) {
+        if(processMatchesCallback != null)
+            processMatchesCallback(matches, data);
+    }
     
     public void GameOver() {
+        Debug.Log("gameover!");
+
         //let everyone know, a block should know about it and update itself, also cursor, hopefully!
         if(actCallback != null)
             actCallback(this, Action.GameOver);
@@ -140,165 +188,35 @@ public class Board : MonoBehaviour {
         }
     }
 
-    public void GenerateRow(int rowInd, int numLongBlocks, Block.State state, bool checkPrevType) {
-        if(numLongBlocks > 0) {
-            ShuffleLongBlocks(numLongBlocks);
+    public void GenerateRow(int rowInd, Block.State state, bool checkPrevType, Block.Type[] insertBlocks) {
+        Block.Type pickType = Block.Type.NumTypes;
 
-            Block.Type pickType = Block.Type.NumTypes;
-
-            for(int c = 0; c < numCol; c++) {
-                if(c % 2 == 0 && mLongBlockGen[c / 2]) {
-                    //make sure the type picked doesn't make a match
-                    pickType = Pick(mLongBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 2, 1, 1);
-
-                    SpawnBlock(pickType, state, rowInd, c, 1, 2);
-
-                    c++;
-                }
-                else {
-                    pickType = Pick(mBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 1, 1, 1);
-
-                    SpawnBlock(pickType, state, rowInd, c, 1, 1);
-                }
+        if(insertBlocks != null) {
+            //shuffle the insert blocks
+            for(int i = 0; i < numCol; i++) {
+                mRowInserts[i] = i < insertBlocks.Length ? insertBlocks[i] : Block.Type.NumTypes;
             }
-        }
-        else {
-            Block.Type pickType = Block.Type.NumTypes;
 
+            M8.ArrayUtil.Shuffle(mRowInserts);
+            //
+
+            //go through and put stuff on the row
             for(int c = 0; c < numCol; c++) {
-                pickType = Pick(mBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 1, 1, 1);
+                if(mRowInserts[c] == Block.Type.NumTypes)
+                    pickType = Pick(mBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 1, 1, 1);
+                else {
+                    pickType = mRowInserts[c];
+                }
 
                 SpawnBlock(pickType, state, rowInd, c, 1, 1);
             }
         }
-    }
-
-    //goes through blocks upwards or downwards and get the matches
-    //also adds given block to output if it hasn't been added already
-    //return number of matches found
-    private int GetNeightborMatchesRowRecurse(Block block, List<Block> output, bool upwards) {
-        int rowCount = 0;
-
-        BlockConfig blockConfig = BlockConfig.instance;
-
-        Block.Type type = block.type;
-        int colDir = block.tileDir.col, rowDir = block.tileDir.row, col = block.tilePos.col, row = block.tilePos.row;
-        int sizeCol = block.tileSize.col, sizeRow = block.tileSize.row;
-
-        //if it's already matched, it's guaranteed to be in output already
-        if((block.flags & Block.Flag.Match) == 0) {
-            block.flags |= Block.Flag.Match;
-            output.Add(block);
-        }
-
-        //vertical
-        int minCol, maxCol;
-        GetIndexRange(col, sizeCol, colDir, numCol, out minCol, out maxCol);
-
-        int r;
-        if(upwards) {
-            r = rowDir > 0 ? row + sizeRow : row + 1;
-        }
         else {
-            r = rowDir > 0 ? row - 1 : row - sizeRow;
-        }
-
-        if(r >= 0 && r < numRow) {
-            for(int c = minCol; c <= maxCol; c++) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    rowCount = GetNeightborMatchesRowRecurse(b, output, upwards) + 1;
-                }
+            for(int c = 0; c < numCol; c++) {
+                pickType = Pick(mBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 1, 1, 1);
+                SpawnBlock(pickType, state, rowInd, c, 1, 1);
             }
         }
-
-        return rowCount;
-    }
-
-    //goes through blocks left or right and get the matches
-    //also adds given block to output if it hasn't been added already
-    //return new colCount
-    private int GetNeightborMatchesColRecurse(Block block, List<Block> output, bool leftward) {
-        int colCount = 0;
-
-        BlockConfig blockConfig = BlockConfig.instance;
-
-        Block.Type type = block.type;
-        int colDir = block.tileDir.col, rowDir = block.tileDir.row, col = block.tilePos.col, row = block.tilePos.row;
-        int sizeCol = block.tileSize.col, sizeRow = block.tileSize.row;
-
-        //if it's already matched, it's guaranteed to be in output already
-        if((block.flags & Block.Flag.Match) == 0) {
-            block.flags |= Block.Flag.Match;
-            output.Add(block);
-        }
-
-        //horizontal
-        int minRow, maxRow;
-        GetIndexRange(row, sizeRow, rowDir, numRow, out minRow, out maxRow);
-
-        int c;
-        if(leftward) {
-            c = colDir > 0 ? col + sizeCol : col + 1;
-        }
-        else {
-            c = colDir > 0 ? col - 1 : col - sizeCol;
-        }
-
-        if(c >= 0 && c < numCol) {
-            for(int r = minRow; r <= maxRow; r++) {
-                Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
-                    colCount = GetNeightborMatchesColRecurse(b, output, leftward) + 1;
-                }
-            }
-        }
-
-        return colCount;
-    }
-
-    /// <summary>
-    /// Add blocks to output if there are any matches >= 3 based on given block,
-    /// the given block will also be added if we did get matches.
-    /// Returns the number of blocks added to output
-    /// </summary>
-    public int GetMatches(Block block, List<Block> output) {
-        int lastCount = output.Count;
-
-        int lastAddIndex = output.Count - 1;
-
-        //check vertical
-        int rowCount = 1;
-
-        rowCount += GetNeightborMatchesRowRecurse(block, output, true);
-        rowCount += GetNeightborMatchesRowRecurse(block, output, false);
-
-        if(rowCount < 3) {
-            //clear out the added crap
-            for(int i = lastAddIndex + 1; i < output.Count; i++) {
-                output[i].flags ^= Block.Flag.Match;
-            }
-            output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
-        }
-        else {
-            lastAddIndex = output.Count - 1;
-        }
-
-        //check horizontal
-        int colCount = 1;
-
-        colCount += GetNeightborMatchesColRecurse(block, output, true);
-        colCount += GetNeightborMatchesColRecurse(block, output, false);
-
-        if(colCount < 3) {
-            //clear out the added crap
-            for(int i = lastAddIndex + 1; i < output.Count; i++) {
-                output[i].flags ^= Block.Flag.Match;
-            }
-            output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
-        }
-
-        return output.Count - lastCount;
     }
     
     /// <summary>
@@ -322,12 +240,60 @@ public class Board : MonoBehaviour {
     }
 
     public bool CheckMatch(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
-        return GetMaxMatchCount(type, row, col, aNumRow, aNumCol, rowDir, colDir) >= 2;//> Mathf.Max(aNumCol, aNumRow);
+        //check the surrounding
+        
+        int minCol, maxCol;
+        GetIndexRange(col, aNumCol, colDir, numCol, out minCol, out maxCol);
+        minCol--; maxCol++;
+
+        int minRow, maxRow;
+        GetIndexRange(row, aNumRow, rowDir, numRow, out minRow, out maxRow);
+        minRow--; maxRow++;
+
+        //top/bottom
+        for(int c = minCol; c <= maxCol; c++) {
+            if(c >= 0 && c < numCol) {
+                //top
+                if(maxRow < numRow) {
+                    Block b = mTable[maxRow][c];
+                    if(b != null && b.CheckMatch(type))
+                        return true;
+                }
+
+                //bottom
+                if(minRow >= 0) {
+                    Block b = mTable[minRow][c];
+                    if(b != null && b.CheckMatch(type))
+                        return true;
+                }
+            }
+        }
+
+        //left/right
+        minRow++; maxRow--;
+        for(int r = minRow; r <= maxRow; r++) {
+            if(r >= 0 && r < numRow) {
+                //right
+                if(maxCol < numCol) {
+                    Block b = mTable[r][maxCol];
+                    if(b != null && b.CheckMatch(type))
+                        return true;
+                }
+
+                //left
+                if(minCol >= 0) {
+                    Block b = mTable[r][minCol];
+                    if(b != null && b.CheckMatch(type))
+                        return true;
+                }
+            }
+        }
+
+        return false;
+        //return GetMaxMatchCount(type, row, col, aNumRow, aNumCol, rowDir, colDir) >= 2;//> Mathf.Max(aNumCol, aNumRow);
     }
 
     public int GetMaxMatchCount(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
-        BlockConfig blockConfig = BlockConfig.instance;
-
         int count = 0;
 
         //vertical
@@ -340,7 +306,7 @@ public class Board : MonoBehaviour {
             //check upwards
             for(int r = rowDir > 0 ? row + aNumRow : row + 1; r < table.Length;) {
                 Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
+                if(b != null && b.CheckMatch(type)) {
                     rowCount++;
                     r += b.tileSize.row;
                 }
@@ -351,7 +317,7 @@ public class Board : MonoBehaviour {
             //check downwards
             for(int r = rowDir > 0 ? row - 1 : row - aNumRow; r >= 0;) {
                 Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
+                if(b != null && b.CheckMatch(type)) {
                     rowCount++;
                     r -= b.tileSize.row;
                 }
@@ -373,7 +339,7 @@ public class Board : MonoBehaviour {
             //check right
             for(int c = colDir > 0 ? col + aNumCol : col + 1; c < numCol;) {
                 Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
+                if(b != null && b.CheckMatch(type)) {
                     colCount++;
                     c += b.tileSize.col;
                 }
@@ -384,7 +350,7 @@ public class Board : MonoBehaviour {
             //check left
             for(int c = rowDir > 0 ? col - 1 : col - aNumCol; c >= 0;) {
                 Block b = table[r][c];
-                if(b != null && b.state == Block.State.Idle && (b.flags & Block.Flag.MatchLock) == 0 && blockConfig.CheckMatch(b.type, type)) {
+                if(b != null && b.CheckMatch(type)) {
                     colCount++;
                     c -= b.tileSize.col;
                 }
@@ -399,9 +365,15 @@ public class Board : MonoBehaviour {
         return count;
     }
 
+    //used by block only!
+    public void _BlockSetFallCounter(int val) {
+        mFallCounter = val;
+    }
+
     void OnDestroy() {
         actCallback = null;
         evalCallback = null;
+        processMatchesCallback = null;
     }
     
     void Awake() {
@@ -409,15 +381,17 @@ public class Board : MonoBehaviour {
                 
         mMaxBlocks = numRow * numCol * 2 + numCol;
 
-        mLongBlockGen = new bool[numCol/2];
-
         mTable = M8.ArrayUtil.NewDoubleArray<Block>(numRow * 2, numCol);
+
+        mRowInserts = new Block.Type[numCol];
+
+        mCursor = GetComponentInChildren<Cursor>();
+        mCursor.board = this;
     }
 
     // Use this for initialization
     void Start() {
         mBlockTypePicker = BlockRandomizer.GetRandomizer(blockPickGroup);
-        mLongBlockTypePicker = BlockRandomizer.GetRandomizer(longBlockPickGroup);
 
         mBlockHolder = mBlockPool.GetDefaultParent(BlockPoolType);
 
@@ -433,7 +407,7 @@ public class Board : MonoBehaviour {
         //wait until activate
         mBlockHolder.gameObject.SetActive(false);
 
-        ActDelay(Action.Init);
+        StartCoroutine(ActDelay(Action.Init));
     }
 
     // Update is called once per frame
@@ -461,14 +435,12 @@ public class Board : MonoBehaviour {
 
         if(actCallback != null)
             actCallback(this, act);
-    }
 
-    private void ShuffleLongBlocks(int count) {
-
-        for(int i = 0, c = 0; i < mLongBlockGen.Length; i++, c++) {
-            mLongBlockGen[i] = c < count;
+        if(animation != null && !string.IsNullOrEmpty(enterAnimation)) {
+            animation.Play(enterAnimation);
         }
-
-        M8.ArrayUtil.Shuffle(mLongBlockGen);
+        else {
+            Activate();
+        }
     }
 }

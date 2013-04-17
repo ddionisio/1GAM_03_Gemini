@@ -13,10 +13,13 @@ public class Cursor : MonoBehaviour {
 
     public enum RotateDir {
         Clockwise,
-        CounterClockwise
+        CounterClockwise,
+        None
     }
 
     public enum State {
+        Inactive,
+
         None,
         Rotate,
         Move
@@ -30,9 +33,9 @@ public class Cursor : MonoBehaviour {
     public float moveStartDelay;
     public float moveDelay;
 
-    private Board mBoard;
+    private Board mBoard = null;
 
-    private State mState = State.None;
+    private State mState = State.Inactive;
 
     private Dir mMoveDir;
     private bool mMoveStart;
@@ -46,8 +49,23 @@ public class Cursor : MonoBehaviour {
     private M8.TilePos mTilePos;
 
     private float mCurTime;
+
+    private bool mActionEnabled = false;
         
-    public Board board { get { return mBoard; } }
+    public Board board { 
+        get { return mBoard; }
+        set {
+            if(mBoard != null) {
+                mBoard.actCallback -= OnBoardAction;
+            }
+
+            mBoard = value;
+
+            if(mBoard != null) {
+                mBoard.actCallback += OnBoardAction;
+            }
+        }
+    }
 
     public State state { get { return mState; } }
 
@@ -101,73 +119,10 @@ public class Cursor : MonoBehaviour {
 
     //returns true if we are now rotating
     public bool Rotate(RotateDir dir) {
-        if(mState == State.Rotate)
+        if(mState == State.Rotate || !mActionEnabled)
             return false;
 
-        //mRotBlocksCheck
-        int numRotable = 0;
-
-        for(int r = 0; r < size.row; r++) {
-            int curR = mTilePos.row + r;
-
-            for(int c = 0; c < size.col; c++) {
-                int curC = mTilePos.col + c;
-
-                Block b = mBoard.table[curR][curC];
-                if(b != null) {
-                    if(b.canRotate && b.IsContainedIn(mTilePos, size)) {
-                        if(System.Array.IndexOf(mRotBlocksCheck, b, 0, numRotable) == -1) {
-                            mRotBlocksCheck[numRotable] = b;
-                            numRotable++;
-                        }
-                    }
-                    else {
-                        r = size.row;
-                        numRotable = 0;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if(numRotable > 0) {
-            //clear out previous state
-            EndCurrentState();
-
-            mState = State.Rotate;
-
-            Vector2 cursorPos = transform.localPosition;
-            cursorPos += mBoard.tileSize;
-            
-            //rotate tile reference for each block
-            mRotNumBlocks = numRotable;
-            for(int i = 0; i < numRotable; i++) {
-                mRotBlocks[i] = mRotBlocksCheck[i];
-                mRotBlocks[i].state = Block.State.Rotate;
-                mRotBlocks[i].SetRotateTile(dir, cursorPos);
-                mRotBlocks[i].transform.parent = holder;
-            }
-
-            //set rotation anim
-            mRotStart = transform.localEulerAngles.z;
-
-            switch(dir) {
-                case RotateDir.Clockwise:
-                    mRotEnd = mRotStart - 90.0f;
-                    break;
-
-                case RotateDir.CounterClockwise:
-                    mRotEnd = mRotStart + 90.0f;
-                    break;
-            }
-
-            StartCurrentState();
-
-            return true;
-        }
-        else {
-            return false;
-        }
+        return DoRotate(dir);
     }
 
     public bool RotateContains(Block b) {
@@ -175,28 +130,11 @@ public class Cursor : MonoBehaviour {
     }
 
     void OnDestroy() {
-        if(mBoard != null) {
-            mBoard.actCallback -= OnBoardAction;
-        }
+        board = null;
     }
 
     void Awake() {
-        mBoard = M8.Util.GetComponentUpwards<Board>(transform, false);
-        if(mBoard == null) {
-            Debug.LogError("Board component needs to exist!");
-        }
-
-        mBoard.actCallback += OnBoardAction;
-
-        //set to center bottom of board
-        SetTilePos(0, (mBoard.numCol / 2) - (size.col / 2));
-
-        holder.localRotation = Quaternion.identity;
-    }
-
-    // Use this for initialization
-    void Start() {
-
+        holder.gameObject.SetActive(false);
     }
 
     // Update is called once per frame
@@ -264,12 +202,38 @@ public class Cursor : MonoBehaviour {
 
     void OnBoardAction(Board board, Board.Action act) {
         switch(act) {
+            case Board.Action.Activate:
+                holder.gameObject.SetActive(true);
+                holder.localRotation = Quaternion.identity;
+
+                //set to center bottom of board
+                SetTilePos(0, (mBoard.numCol / 2) - (size.col / 2));
+
+                mState = State.None;
+
+                mActionEnabled = false;
+                break;
+
+            case Board.Action.StartGame:
+                mActionEnabled = true;
+                break;
+
             case Board.Action.PushRow:
                 Vector3 pos = transform.localPosition;
                 pos.y += board.tileSize.y;
                 transform.localPosition = pos;
 
                 mTilePos.row++;
+                break;
+
+            case Board.Action.GameOver:
+                EndCurrentState();
+
+                holder.gameObject.SetActive(false);
+
+                mState = State.Inactive;
+
+                mActionEnabled = false;
                 break;
         }
     }
@@ -316,6 +280,73 @@ public class Cursor : MonoBehaviour {
 
             case State.Rotate:
                 break;
+        }
+    }
+
+    private bool DoRotate(RotateDir rot) {
+        //mRotBlocksCheck
+        int numRotable = 0;
+
+        for(int r = 0; r < size.row; r++) {
+            int curR = mTilePos.row + r;
+
+            for(int c = 0; c < size.col; c++) {
+                int curC = mTilePos.col + c;
+
+                Block b = mBoard.table[curR][curC];
+                if(b != null) {
+                    if(b.canRotate && b.IsContainedIn(mTilePos, size)) {
+                        if(System.Array.IndexOf(mRotBlocksCheck, b, 0, numRotable) == -1) {
+                            mRotBlocksCheck[numRotable] = b;
+                            numRotable++;
+                        }
+                    }
+                    else {
+                        r = size.row;
+                        numRotable = 0;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if(numRotable > 0) {
+            //clear out previous state
+            EndCurrentState();
+
+            mState = State.Rotate;
+
+            Vector2 cursorPos = transform.localPosition;
+            cursorPos += mBoard.tileSize;
+
+            //rotate tile reference for each block
+            mRotNumBlocks = numRotable;
+            for(int i = 0; i < numRotable; i++) {
+                mRotBlocks[i] = mRotBlocksCheck[i];
+                mRotBlocks[i].state = Block.State.Rotate;
+                mRotBlocks[i].SetRotateTile(rot, cursorPos);
+                mRotBlocks[i].transform.parent = holder;
+            }
+
+            //set rotation anim
+            mRotStart = transform.localEulerAngles.z;
+
+            switch(rot) {
+                case RotateDir.Clockwise:
+                    mRotEnd = mRotStart - 90.0f;
+                    break;
+
+                case RotateDir.CounterClockwise:
+                    mRotEnd = mRotStart + 90.0f;
+                    break;
+            }
+
+            StartCurrentState();
+
+            return true;
+        }
+        else {
+            return false;
         }
     }
 

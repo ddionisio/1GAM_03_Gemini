@@ -30,6 +30,8 @@ public class BlockConfigInspector : Editor {
     }
     
     public override void OnInspectorGUI() {
+        FontStyle defaultLabelFontStyle = GUI.skin.label.fontStyle;
+
         //initialize sprite animation lib
         InitAnimLib();
 
@@ -61,7 +63,10 @@ public class BlockConfigInspector : Editor {
 
                 GUILayout.BeginVertical(GUI.skin.box);
 
+                
+                GUI.skin.label.fontStyle = FontStyle.Bold;
                 GUILayout.Label(type.ToString());
+                GUI.skin.label.fontStyle = defaultLabelFontStyle;
 
                 //anim for icon
                 if(mAnimLibs == null) {
@@ -96,8 +101,10 @@ public class BlockConfigInspector : Editor {
                 //panel sprite
                 GUILayout.BeginVertical(GUI.skin.box);
 
-                GUILayout.Label("Panel");
-                tk2dSpriteGuiUtility.SpriteSelector(info.panelSpriteCollection, info.panelSpriteId, PanelSpriteChangedCallbackImpl, info);
+                info.hasPanel = GUILayout.Toggle(info.hasPanel, "Panel");
+                if(info.hasPanel) {
+                    tk2dSpriteGuiUtility.SpriteSelector(info.panelSpriteCollection, info.panelSpriteId, PanelSpriteChangedCallbackImpl, info);
+                }
 
                 GUILayout.EndVertical();
 

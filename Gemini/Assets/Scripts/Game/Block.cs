@@ -9,6 +9,12 @@ public class Block : MonoBehaviour {
         Water,
         Wood,
 
+        FirePower,
+        EarthPower,
+        MetalPower,
+        WaterPower,
+        WoodPower,
+
         NumTypes
     }
 
@@ -49,15 +55,15 @@ public class Block : MonoBehaviour {
 
     public Type startType = Type.NumTypes;
 
+    public Type power = Type.NumTypes; //which power this block is associated with
+
     public tk2dAnimatedSprite icon;
     public tk2dSlicedSprite panel;
 
     public M8.TilePos tilePos = M8.TilePos.zero;
     public M8.TilePos tileSize = M8.TilePos.one;
     public M8.TilePos tileDir = M8.TilePos.one; //from bottom left used for traversing board based on tile size
-
-    private static int mFallCounter = 0;
-
+        
     private Type mType = Type.NumTypes;
 
     private State mState = State.NumStates;
@@ -68,14 +74,27 @@ public class Block : MonoBehaviour {
     private float mFallOfsY; //increment by fall speed, when it is >= board.tileSize.y, then update this block's table reference, continue
 
     private Flag mFlags = (Flag)0;
-
-    public static int fallCounter { get { return mFallCounter; } }
-
+        
     public Board owner { get { return mOwner; } }
 
     public Flag flags {
         get { return mFlags; }
         set { mFlags = value; }
+    }
+
+    public bool isPower {
+        get {
+            switch(mType) {
+                case Type.FirePower:
+                case Type.EarthPower:
+                case Type.MetalPower:
+                case Type.WaterPower:
+                case Type.WoodPower:
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     public Type type {
@@ -93,9 +112,43 @@ public class Block : MonoBehaviour {
                     BlockConfig.BlockInfo info = BlockConfig.instance.blockTypes[typeInd];
 
                     icon.anim = info.icon;
-                    panel.SetSprite(info.panelSpriteCollection, info.panelSpriteId);
+
+                    if(panel != null) {
+                        panel.gameObject.SetActive(info.hasPanel);
+                        if(info.hasPanel)
+                            panel.SetSprite(info.panelSpriteCollection, info.panelSpriteId);
+                    }
 
                     mIconClipIds = BlockConfig.instance.blockData[typeInd].spriteClipIds;
+
+                    //set power stuff
+                    switch(mType) {
+                        case Type.Fire:
+                            power = Type.FirePower;
+                            break;
+                        case Type.Earth:
+                            power = Type.EarthPower;
+                            break;
+                        case Type.Metal:
+                            power = Type.MetalPower;
+                            break;
+                        case Type.Water:
+                            power = Type.WaterPower;
+                            break;
+                        case Type.Wood:
+                            power = Type.WoodPower;
+                            break;
+
+                        case Type.FirePower:
+                        case Type.EarthPower:
+                        case Type.MetalPower:
+                        case Type.WaterPower:
+                        case Type.WoodPower:
+                            power = mType;
+
+                            //other stuff
+                            break;
+                    }
 
                     StartCurrentState();
                 }
@@ -170,8 +223,13 @@ public class Block : MonoBehaviour {
 
     public bool canRotate {
         get {
-            //TODO: for special blocks that simply can't be rotated, locked or something
             return (mFlags & Flag.RotateLock) == 0 ? state == State.Idle : false;
+        }
+    }
+
+    public bool canMatch {
+        get {
+            return state == State.Idle && (flags & Flag.MatchLock) == 0;
         }
     }
 
@@ -197,6 +255,23 @@ public class Block : MonoBehaviour {
         get {
             return tileSize.col > 1 && tileDir.col > 0 ? tilePos.col + tileSize.col - 1 : tilePos.col;
         }
+    }
+
+    public bool CheckMatch(Block other) {
+        if(!canMatch || !other.canMatch)
+            return false;
+
+        return type == other.type || power == other.power;
+    }
+
+    //If 'other' is a power type, compare with this block's 'power'
+    public bool CheckMatch(Type other) {
+        //TODO: special blocks matching, like all-color match or something
+        //default: same type
+        if(!canMatch)
+            return false;
+
+        return type == other || power == other;
     }
 
     //assumes given pos is bottom-left, ie. dir = [1, 1]
@@ -458,6 +533,11 @@ public class Block : MonoBehaviour {
     // Update is called once per frame
     void Update() {
         switch(mState) {
+            case State.Activate:
+                //TODO: wait for some sort of animation end
+                state = State.Idle;
+                break;
+
             case State.Idle:
                 if(canFall) {
                     state = State.Fall;
@@ -568,14 +648,19 @@ public class Block : MonoBehaviour {
     }
 
     private void EndCurrentState() {
-        icon.Stop();
+        if(icon != null)
+            icon.Stop();
 
         switch(mState) {
+            case State.Activate:
+                break;
+
             case State.Idle:
                 break;
 
             case State.Fall:
-                mFallCounter--;
+                if(mOwner != null)
+                    mOwner._BlockSetFallCounter(mOwner.fallCounter - 1);
                 break;
 
             case State.DestroyFlash:
@@ -594,6 +679,9 @@ public class Block : MonoBehaviour {
 
     private void StartCurrentState() {
         switch(mState) {
+            case State.Activate:
+                break;
+
             case State.Wait:
             case State.Idle:
                 icon.Play(mIconClipIds[(int)SpriteState.Idle]);
@@ -615,7 +703,7 @@ public class Block : MonoBehaviour {
 
                 mFallOfsY = 0.0f;
 
-                mFallCounter++;
+                mOwner._BlockSetFallCounter(mOwner.fallCounter + 1);
 
                 mFlags &= ~Flag.Chain;
                 break;
