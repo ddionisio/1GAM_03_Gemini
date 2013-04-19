@@ -19,7 +19,6 @@ public class RowBlockRising : MonoBehaviour {
     public float dangerDelay;
     
     private Board mBoard = null;
-    private BlockDestroyer mDestroyer = null;
     
     private State mState = State.None;
     private float mCountDown;
@@ -70,12 +69,10 @@ public class RowBlockRising : MonoBehaviour {
         mBoard.actCallback += OnBoardAction;
 
         mPowerBlockInserts = new Block.Type[numPowerPerRow];
-
-        mDestroyer = GetComponent<BlockDestroyer>();
     }
 
     void Update() {
-        bool destroyActive = mDestroyer != null ? mDestroyer.numActive > 0 : false;
+        bool destroyActive = mBoard.destroyCounter > 0;
 
         if(mBoard.fallCounter == 0 && !destroyActive) {
             switch(mState) {

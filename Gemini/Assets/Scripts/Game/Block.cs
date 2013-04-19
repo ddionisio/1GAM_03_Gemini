@@ -25,10 +25,10 @@ public class Block : MonoBehaviour {
         Fall,
         Rotate,
 
-        DestroyFlash,
+        Flash,
+
         DestroyWait,
         Destroy,
-        Destroyed,
 
         NumStates
     }
@@ -51,19 +51,21 @@ public class Block : MonoBehaviour {
         RotateLock = 0x4, //can't rotate this block, sorry!
         MatchLock = 0x8, //can't match anything, useless!
         FallLock = 0x10, //can't fall, stuck!
+        FixedIcon = 0x20 //fixed icon orientation
     }
 
     public Type startType = Type.NumTypes;
 
-    public Type power = Type.NumTypes; //which power this block is associated with
-
     public tk2dAnimatedSprite icon;
     public tk2dSlicedSprite panel;
+    public tk2dSlicedSprite panelFlash; //for flashing
 
     public M8.TilePos tilePos = M8.TilePos.zero;
     public M8.TilePos tileSize = M8.TilePos.one;
     public M8.TilePos tileDir = M8.TilePos.one; //from bottom left used for traversing board based on tile size
-        
+
+    private BlockExplode mExploder;
+
     private Type mType = Type.NumTypes;
 
     private State mState = State.NumStates;
@@ -72,8 +74,37 @@ public class Block : MonoBehaviour {
     private int[] mIconClipIds;
 
     private float mFallOfsY; //increment by fall speed, when it is >= board.tileSize.y, then update this block's table reference, continue
+    private float mFallCheckDelay; //delay before checking for fall
 
     private Flag mFlags = (Flag)0;
+
+    private Type mMatch = Type.NumTypes;
+
+    private int mExplodeLevel = 0;
+
+    public static Type GetMatchType(Type type) {
+        switch(type) {
+            case Type.Fire:
+                return Type.FirePower;
+            case Type.Earth:
+                return Type.EarthPower;
+            case Type.Metal:
+                return Type.MetalPower;
+            case Type.Water:
+                return Type.WaterPower;
+            case Type.Wood:
+                return Type.WoodPower;
+
+            case Type.FirePower:
+            case Type.EarthPower:
+            case Type.MetalPower:
+            case Type.WaterPower:
+            case Type.WoodPower:
+                return type;
+        }
+
+        return Type.NumTypes;
+    }
         
     public Board owner { get { return mOwner; } }
 
@@ -111,44 +142,18 @@ public class Block : MonoBehaviour {
 
                     BlockConfig.BlockInfo info = BlockConfig.instance.blockTypes[typeInd];
 
-                    icon.anim = info.icon;
+                    icon.gameObject.SetActive(info.hasIcon);
+                    if(info.hasIcon)
+                        icon.anim = info.icon;
 
-                    if(panel != null) {
-                        panel.gameObject.SetActive(info.hasPanel);
-                        if(info.hasPanel)
-                            panel.SetSprite(info.panelSpriteCollection, info.panelSpriteId);
-                    }
+                    panel.gameObject.SetActive(info.hasPanel);
+                    if(info.hasPanel)
+                        panel.SetSprite(info.panelSpriteCollection, info.panelSpriteId);
 
                     mIconClipIds = BlockConfig.instance.blockData[typeInd].spriteClipIds;
 
-                    //set power stuff
-                    switch(mType) {
-                        case Type.Fire:
-                            power = Type.FirePower;
-                            break;
-                        case Type.Earth:
-                            power = Type.EarthPower;
-                            break;
-                        case Type.Metal:
-                            power = Type.MetalPower;
-                            break;
-                        case Type.Water:
-                            power = Type.WaterPower;
-                            break;
-                        case Type.Wood:
-                            power = Type.WoodPower;
-                            break;
-
-                        case Type.FirePower:
-                        case Type.EarthPower:
-                        case Type.MetalPower:
-                        case Type.WaterPower:
-                        case Type.WoodPower:
-                            power = mType;
-
-                            //other stuff
-                            break;
-                    }
+                    //set match
+                    mMatch = GetMatchType(mType);
 
                     StartCurrentState();
                 }
@@ -170,6 +175,11 @@ public class Block : MonoBehaviour {
                 StartCurrentState();
             }
         }
+    }
+
+    public float fallCheckDelay {
+        get { return mFallCheckDelay; }
+        set { mFallCheckDelay = value; }
     }
 
     public bool canFall {
@@ -257,11 +267,18 @@ public class Block : MonoBehaviour {
         }
     }
 
+    public int explodeLevel {
+        get { return mExplodeLevel; }
+        set { mExplodeLevel = value; }
+    }
+
+    public BlockExplode exploder { get { return mExploder; } }
+
     public bool CheckMatch(Block other) {
         if(!canMatch || !other.canMatch)
             return false;
 
-        return type == other.type || power == other.power;
+        return mMatch == other.mMatch;
     }
 
     //If 'other' is a power type, compare with this block's 'power'
@@ -271,7 +288,7 @@ public class Block : MonoBehaviour {
         if(!canMatch)
             return false;
 
-        return type == other || power == other;
+        return mMatch == GetMatchType(other);
     }
 
     //assumes given pos is bottom-left, ie. dir = [1, 1]
@@ -337,6 +354,7 @@ public class Block : MonoBehaviour {
         panelSize.y *= numRow;
 
         panel.dimensions = panelSize;
+        panelFlash.dimensions = panelSize;
 
         //set position, assume tileDir = 1, 1
         transform.localPosition = new Vector3(col * boardTileSize.x, row * boardTileSize.y, 0.0f);
@@ -493,6 +511,38 @@ public class Block : MonoBehaviour {
         }
     }
 
+    public void RemoveTableReference() {
+        if(mOwner != null) {
+            for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
+                if(curR >= 0 && curR < mOwner.table.Length) {
+                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
+                        if(curC >= 0 && curC < mOwner.numCol && mOwner.table[curR][curC] == this)
+                            mOwner.table[curR][curC] = null;
+                    }
+                }
+            }
+        }
+        else {
+            Debug.LogWarning("owner is missing!");
+        }
+    }
+
+    public void SetTableReference() {
+        if(mOwner != null) {
+            for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
+                if(curR >= 0 && curR < mOwner.table.Length) {
+                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
+                        if(curC >= 0 && curC < mOwner.numCol)
+                            mOwner.table[curR][curC] = this;
+                    }
+                }
+            }
+        }
+        else {
+            Debug.LogWarning("owner is missing!");
+        }
+    }
+
     void OnDestroy() {
         //must not be from pool
         OnDespawned();
@@ -523,11 +573,9 @@ public class Block : MonoBehaviour {
     }
 
     void Awake() {
-    }
+        mExploder = GetComponentInChildren<BlockExplode>();
 
-    // Use this for initialization
-    void Start() {
-
+        panelFlash.gameObject.SetActive(false);
     }
 
     // Update is called once per frame
@@ -539,7 +587,10 @@ public class Block : MonoBehaviour {
                 break;
 
             case State.Idle:
-                if(canFall) {
+                if(mFallCheckDelay > 0.0f) {
+                    mFallCheckDelay -= Time.deltaTime;
+                }
+                else if(canFall) {
                     state = State.Fall;
                 }
                 break;
@@ -581,10 +632,6 @@ public class Block : MonoBehaviour {
                     }
                 }
                 break;
-
-            case State.Destroy:
-                state = State.Destroyed;
-                break;
         }
     }
 
@@ -615,38 +662,6 @@ public class Block : MonoBehaviour {
         }
     }
 
-    private void RemoveTableReference() {
-        if(mOwner != null) {
-            for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
-                if(curR >= 0 && curR < mOwner.table.Length) {
-                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
-                        if(curC >= 0 && curC < mOwner.numCol && mOwner.table[curR][curC] == this)
-                            mOwner.table[curR][curC] = null;
-                    }
-                }
-            }
-        }
-        else {
-            Debug.LogWarning("owner is missing!");
-        }
-    }
-
-    private void SetTableReference() {
-        if(mOwner != null) {
-            for(int r = 0, curR = tilePos.row; r < tileSize.row; r++, curR = tileDir.row < 0 ? tilePos.row - r : tilePos.row + r) {
-                if(curR >= 0 && curR < mOwner.table.Length) {
-                    for(int c = 0, curC = tilePos.col; c < tileSize.col; c++, curC = tileDir.col < 0 ? tilePos.col - c : tilePos.col + c) {
-                        if(curC >= 0 && curC < mOwner.numCol)
-                            mOwner.table[curR][curC] = this;
-                    }
-                }
-            }
-        }
-        else {
-            Debug.LogWarning("owner is missing!");
-        }
-    }
-
     private void EndCurrentState() {
         if(icon != null)
             icon.Stop();
@@ -656,6 +671,7 @@ public class Block : MonoBehaviour {
                 break;
 
             case State.Idle:
+                mFallCheckDelay = 0.0f;
                 break;
 
             case State.Fall:
@@ -663,16 +679,15 @@ public class Block : MonoBehaviour {
                     mOwner._BlockSetFallCounter(mOwner.fallCounter - 1);
                 break;
 
-            case State.DestroyFlash:
+            case State.Flash:
+                panelFlash.gameObject.SetActive(false);
                 break;
 
             case State.DestroyWait:
                 break;
 
             case State.Destroy:
-                break;
-
-            case State.Destroyed:
+                mExploder.Stop();
                 break;
         }
     }
@@ -689,9 +704,12 @@ public class Block : MonoBehaviour {
 
             case State.Rotate:
                 mFlags &= ~Flag.Chain;
+                mFallCheckDelay = BlockConfig.instance.fallDelay;
                 break;
 
             case State.Fall:
+                int rowIndAbove = tilePos.row + 1;
+
                 icon.Play(mIconClipIds[(int)SpriteState.Fall]);
 
                 //update table ref and row
@@ -706,19 +724,41 @@ public class Block : MonoBehaviour {
                 mOwner._BlockSetFallCounter(mOwner.fallCounter + 1);
 
                 mFlags &= ~Flag.Chain;
+
+                //check if block above can fall
+                if(rowIndAbove < mOwner.numRow) {
+                    Block[] rowAbove = mOwner.table[rowIndAbove];
+                    int col, maxCol;
+                    Board.GetIndexRange(tilePos.col, tileSize.col, tileDir.col, mOwner.numCol, out col, out maxCol);
+                    for(; col <= maxCol; col++) {
+                        Block blockAbove = rowAbove[col];
+                        if(blockAbove != null && (blockAbove.tileSize.col == 1 || blockAbove.canFall)) {
+                            blockAbove.state = State.Fall;
+                        }
+                    }
+                }
+
                 break;
 
-            case State.DestroyFlash:
+            case State.Flash:
+                panelFlash.gameObject.SetActive(true);
                 break;
 
             case State.DestroyWait:
+                icon.Play(mIconClipIds[(int)SpriteState.Destroy]);
+
                 mFallOfsY = 0.0f;
                 break;
 
             case State.Destroy:
-                break;
+                //disable stuff
+                icon.gameObject.SetActive(false);
+                panel.gameObject.SetActive(false);
 
-            case State.Destroyed:
+                //enable destroy object
+                BlockConfig.BlockInfo info = BlockConfig.instance.blockTypes[(int)type];
+
+                mExploder.Begin(explodeLevel, info.color);
                 break;
         }
     }

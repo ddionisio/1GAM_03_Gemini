@@ -4,7 +4,6 @@ using System.Collections.Generic;
 
 public class BoardEvaluatorPower : MonoBehaviour {
     private Board mBoard;
-    private BlockDestroyer mDestroyer;
     private Cursor mCursor;
 
     private HashSet<Block> mProcess;
@@ -126,8 +125,6 @@ public class BoardEvaluatorPower : MonoBehaviour {
         mBoard = GetComponent<Board>();
         mBoard.evalCallback += EvalBlockCallback;
 
-        mDestroyer = GetComponent<BlockDestroyer>();
-
         mCursor = GetComponentInChildren<Cursor>();
     }
 
@@ -217,7 +214,7 @@ public class BoardEvaluatorPower : MonoBehaviour {
             yield return new WaitForFixedUpdate();
 
             int numFalling = mBoard.fallCounter;
-            int numDestroying = mDestroyer != null ? mDestroyer.numActive : 0;
+            int numDestroying = mBoard.destroyCounter;
             bool isRotating = mCursor != null ? mCursor.state == Cursor.State.Rotate : false;
 
             mChainCountActive = numFalling > 0 || numDestroying > 0 || isRotating || mEvaluating;

@@ -63,47 +63,63 @@ public class BlockConfigInspector : Editor {
 
                 GUILayout.BeginVertical(GUI.skin.box);
 
-                
+                ////type
                 GUI.skin.label.fontStyle = FontStyle.Bold;
                 GUILayout.Label(type.ToString());
                 GUI.skin.label.fontStyle = defaultLabelFontStyle;
 
-                //anim for icon
-                if(mAnimLibs == null) {
-                    GUILayout.Label("no animation libraries found");
-                    if(GUILayout.Button("Refresh")) {
-                        mAnimInitialized = false;
-                        InitAnimLib();
+                ////icon
+                GUILayout.BeginVertical(GUI.skin.box);
+
+                info.hasIcon = GUILayout.Toggle(info.hasIcon, "Icon");
+
+                if(info.hasIcon) {
+                    //anim for icon
+                    if(mAnimLibs == null) {
+                        GUILayout.Label("no animation libraries found");
+                        if(GUILayout.Button("Refresh")) {
+                            mAnimInitialized = false;
+                            InitAnimLib();
+                        }
+                    }
+                    else {
+                        int selAnimLib = 0;
+
+                        if(info.icon == null) {
+                            info.icon = mAnimLibs[selAnimLib].GetAsset<tk2dSpriteAnimation>();
+                        }
+                        else {
+                            string selectedGUID = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(info.icon));
+                            for(int i = 0; i < mAnimLibs.Length; ++i) {
+                                if(mAnimLibs[i].assetGUID == selectedGUID) {
+                                    selAnimLib = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        int newAnimLib = EditorGUILayout.Popup("Anim", selAnimLib, mAnimLibNames);
+                        if(newAnimLib != selAnimLib) {
+                            info.icon = mAnimLibs[newAnimLib].GetAsset<tk2dSpriteAnimation>();
+                        }
                     }
                 }
                 else {
-                    int selAnimLib = 0;
-
-                    if(info.icon == null) {
-                        info.icon = mAnimLibs[selAnimLib].GetAsset<tk2dSpriteAnimation>();
-                    }
-                    else {
-                        string selectedGUID = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(info.icon));
-                        for(int i = 0; i < mAnimLibs.Length; ++i) {
-                            if(mAnimLibs[i].assetGUID == selectedGUID) {
-                                selAnimLib = i;
-                                break;
-                            }
-                        }
-                    }
-
-                    int newAnimLib = EditorGUILayout.Popup("Icon", selAnimLib, mAnimLibNames);
-                    if(newAnimLib != selAnimLib) {
-                        info.icon = mAnimLibs[newAnimLib].GetAsset<tk2dSpriteAnimation>();
-                    }
+                    info.icon = null;
                 }
 
-                //panel sprite
+                GUILayout.EndVertical();
+
+                ////panel sprite
                 GUILayout.BeginVertical(GUI.skin.box);
 
                 info.hasPanel = GUILayout.Toggle(info.hasPanel, "Panel");
                 if(info.hasPanel) {
                     tk2dSpriteGuiUtility.SpriteSelector(info.panelSpriteCollection, info.panelSpriteId, PanelSpriteChangedCallbackImpl, info);
+                }
+                else {
+                    info.panelSpriteCollection = null;
+                    info.panelSpriteId = 0;
                 }
 
                 GUILayout.EndVertical();
@@ -117,6 +133,7 @@ public class BlockConfigInspector : Editor {
         M8.Editor.Utility.DrawSeparator();
 
         data.destroyFlashDelay = EditorGUILayout.FloatField("Destroy Flash Delay", data.destroyFlashDelay);
+        data.destroyDelay = EditorGUILayout.FloatField("Destroy Delay", data.destroyDelay);
         data.fallDelay = EditorGUILayout.FloatField("Fall Delay", data.fallDelay);
         data.fallSpeed = EditorGUILayout.FloatField("Fall Speed", data.fallSpeed);
     }

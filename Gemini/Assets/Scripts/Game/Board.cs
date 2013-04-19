@@ -33,6 +33,8 @@ public class Board : MonoBehaviour {
     public string enterAnimation;
     public string exitAnimation;
 
+    public tk2dSlicedSprite tint;
+
     public event ActionCallback actCallback;
     public event EvalBlockCallback evalCallback;
     public event ProcessMatchCallback processMatchesCallback; //called after matches are found
@@ -52,6 +54,7 @@ public class Board : MonoBehaviour {
     private BlockRandomizer mBlockTypePicker;
 
     private int mFallCounter = 0;
+    private int mDestroyCounter = 0;
 
     private Block.Type[] mRowInserts;
 
@@ -61,7 +64,15 @@ public class Board : MonoBehaviour {
 
     public Transform blockHolder { get { return mBlockHolder; } }
 
+    /// <summary>
+    /// Get number of blocks falling
+    /// </summary>
     public int fallCounter { get { return mFallCounter; } }
+
+    /// <summary>
+    /// Get number of destruction in process
+    /// </summary>
+    public int destroyCounter { get { return mDestroyCounter; } }
 
     /// <summary>
     /// [row, col]
@@ -138,7 +149,7 @@ public class Board : MonoBehaviour {
         if(processMatchesCallback != null)
             processMatchesCallback(matches, data);
     }
-    
+
     public void GameOver() {
         Debug.Log("gameover!");
 
@@ -370,6 +381,11 @@ public class Board : MonoBehaviour {
         mFallCounter = val;
     }
 
+    //used by destroyers only!
+    public void _DestroySetCounter(int val) {
+        mDestroyCounter = val;
+    }
+
     void OnDestroy() {
         actCallback = null;
         evalCallback = null;
@@ -391,6 +407,11 @@ public class Board : MonoBehaviour {
 
     // Use this for initialization
     void Start() {
+        //adjust tint
+        if(tint != null) {
+            tint.dimensions = new Vector2(numCol*tileSize.x, tileSize.y);
+        }
+
         mBlockTypePicker = BlockRandomizer.GetRandomizer(blockPickGroup);
 
         mBlockHolder = mBlockPool.GetDefaultParent(BlockPoolType);
@@ -436,11 +457,13 @@ public class Board : MonoBehaviour {
         if(actCallback != null)
             actCallback(this, act);
 
-        if(animation != null && !string.IsNullOrEmpty(enterAnimation)) {
-            animation.Play(enterAnimation);
-        }
-        else {
-            Activate();
+        if(act == Action.Init) {
+            if(animation != null && !string.IsNullOrEmpty(enterAnimation)) {
+                animation.Play(enterAnimation);
+            }
+            else {
+                Activate();
+            }
         }
     }
 }

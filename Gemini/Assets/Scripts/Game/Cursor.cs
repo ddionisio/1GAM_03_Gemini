@@ -72,7 +72,7 @@ public class Cursor : MonoBehaviour {
     public bool MoveValid(Dir dir) {
         switch(dir) {
             case Dir.Up:
-                return mTilePos.row + size.row < mBoard.numRow;
+                return mTilePos.row + size.row < (mBoard.CheckBlocksRow(mBoard.numRow - 1) ? mBoard.numRow : mBoard.numRow - 1);
 
             case Dir.Down:
                 return mTilePos.row - 1 >= 0;
@@ -219,11 +219,14 @@ public class Cursor : MonoBehaviour {
                 break;
 
             case Board.Action.PushRow:
-                Vector3 pos = transform.localPosition;
-                pos.y += board.tileSize.y;
-                transform.localPosition = pos;
+                //make sure to stay within board
+                if(mTilePos.row + size.row < board.numRow - 1) {
+                    Vector3 pos = transform.localPosition;
+                    pos.y += board.tileSize.y;
+                    transform.localPosition = pos;
 
-                mTilePos.row++;
+                    mTilePos.row++;
+                }
                 break;
 
             case Board.Action.GameOver:
@@ -258,7 +261,7 @@ public class Cursor : MonoBehaviour {
                         mRotBlocks[i] = null;
                     }
                 }
-
+                                
                 holder.localRotation = Quaternion.identity;
 
                 //clear out
@@ -295,13 +298,16 @@ public class Cursor : MonoBehaviour {
 
                 Block b = mBoard.table[curR][curC];
                 if(b != null) {
+                    //check if block is contained in cursor and can rotate
+                    //ignore blocks that are in destroy state, allow rotation to override
+                    //its table reference
                     if(b.canRotate && b.IsContainedIn(mTilePos, size)) {
                         if(System.Array.IndexOf(mRotBlocksCheck, b, 0, numRotable) == -1) {
                             mRotBlocksCheck[numRotable] = b;
                             numRotable++;
                         }
                     }
-                    else {
+                    else if(b.state != Block.State.Destroy) {
                         r = size.row;
                         numRotable = 0;
                         break;
@@ -327,6 +333,8 @@ public class Cursor : MonoBehaviour {
                 mRotBlocks[i].SetRotateTile(rot, cursorPos);
                 mRotBlocks[i].transform.parent = holder;
             }
+
+            System.Array.Clear(mRotBlocksCheck, 0, numRotable);
 
             //set rotation anim
             mRotStart = transform.localEulerAngles.z;

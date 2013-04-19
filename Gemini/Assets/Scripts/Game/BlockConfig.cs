@@ -5,13 +5,16 @@ using System.Collections;
 public class BlockConfig : MonoBehaviour {
     [System.Serializable]
     public class BlockInfo {
+        public bool hasIcon = true;
         public tk2dSpriteAnimation icon;
 
-        public bool hasPanel;
+        public bool hasPanel = true;
         public tk2dSpriteCollectionData panelSpriteCollection;
         public int panelSpriteId;
 
         public Color color = Color.white;
+
+        public Block.Flag flags = (Block.Flag)0;
     }
 
     public class BlockData {
@@ -21,6 +24,7 @@ public class BlockConfig : MonoBehaviour {
     public BlockInfo[] blockTypes;
 
     public float destroyFlashDelay;
+    public float destroyDelay;
 
     public float fallDelay;
     public float fallSpeed; //pixel/sec
