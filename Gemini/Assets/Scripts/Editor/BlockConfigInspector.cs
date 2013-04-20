@@ -103,9 +103,12 @@ public class BlockConfigInspector : Editor {
                             info.icon = mAnimLibs[newAnimLib].GetAsset<tk2dSpriteAnimation>();
                         }
                     }
+
+                    info.iconAlwaysUp = GUILayout.Toggle(info.iconAlwaysUp, "Always Up");
                 }
                 else {
                     info.icon = null;
+                    info.iconAlwaysUp = false;
                 }
 
                 GUILayout.EndVertical();

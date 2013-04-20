@@ -65,6 +65,7 @@ public class Block : MonoBehaviour {
     public M8.TilePos tileDir = M8.TilePos.one; //from bottom left used for traversing board based on tile size
 
     private BlockExplode mExploder;
+    private TransUpLerp mIconUp;
 
     private Type mType = Type.NumTypes;
 
@@ -84,26 +85,20 @@ public class Block : MonoBehaviour {
 
     public static Type GetMatchType(Type type) {
         switch(type) {
-            case Type.Fire:
-                return Type.FirePower;
-            case Type.Earth:
-                return Type.EarthPower;
-            case Type.Metal:
-                return Type.MetalPower;
-            case Type.Water:
-                return Type.WaterPower;
-            case Type.Wood:
-                return Type.WoodPower;
-
             case Type.FirePower:
+                return Type.Fire;
             case Type.EarthPower:
+                return Type.Earth;
             case Type.MetalPower:
+                return Type.Metal;
             case Type.WaterPower:
+                return Type.Water;
             case Type.WoodPower:
+                return Type.Wood;
+
+            default:
                 return type;
         }
-
-        return Type.NumTypes;
     }
         
     public Board owner { get { return mOwner; } }
@@ -111,21 +106,6 @@ public class Block : MonoBehaviour {
     public Flag flags {
         get { return mFlags; }
         set { mFlags = value; }
-    }
-
-    public bool isPower {
-        get {
-            switch(mType) {
-                case Type.FirePower:
-                case Type.EarthPower:
-                case Type.MetalPower:
-                case Type.WaterPower:
-                case Type.WoodPower:
-                    return true;
-            }
-
-            return false;
-        }
     }
 
     public Type type {
@@ -138,20 +118,24 @@ public class Block : MonoBehaviour {
                 if(mType != Type.NumTypes) {
                     EndCurrentState();
 
-                    int typeInd = (int)type;
+                    BlockConfig.BlockInfo info = config;
 
-                    BlockConfig.BlockInfo info = BlockConfig.instance.blockTypes[typeInd];
-
+                    //icon
                     icon.gameObject.SetActive(info.hasIcon);
-                    if(info.hasIcon)
+                    if(info.hasIcon) {
                         icon.anim = info.icon;
 
+                        if(info.iconAlwaysUp)
+                            mIconUp.ApplyUp();
+                    }
+
+                    mIconClipIds = info.spriteClipIds;
+
+                    //panel
                     panel.gameObject.SetActive(info.hasPanel);
                     if(info.hasPanel)
                         panel.SetSprite(info.panelSpriteCollection, info.panelSpriteId);
-
-                    mIconClipIds = BlockConfig.instance.blockData[typeInd].spriteClipIds;
-
+                                        
                     //set match
                     mMatch = GetMatchType(mType);
 
@@ -173,6 +157,17 @@ public class Block : MonoBehaviour {
 
                 //init stuff
                 StartCurrentState();
+            }
+        }
+    }
+
+    public BlockConfig.BlockInfo config {
+        get {
+            if(type != Type.NumTypes) {
+                return BlockConfig.instance.blockTypes[(int)type];
+            }
+            else {
+                return null;
             }
         }
     }
@@ -555,6 +550,9 @@ public class Block : MonoBehaviour {
         mIconClipIds = null;
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
+
+        icon.transform.localRotation = Quaternion.identity;
+
         tilePos = M8.TilePos.zero;
         tileDir = M8.TilePos.one;
         mFlags = (Flag)0;
@@ -574,6 +572,7 @@ public class Block : MonoBehaviour {
 
     void Awake() {
         mExploder = GetComponentInChildren<BlockExplode>();
+        mIconUp = GetComponentInChildren<TransUpLerp>();
 
         panelFlash.gameObject.SetActive(false);
     }
@@ -648,9 +647,11 @@ public class Block : MonoBehaviour {
                 SetTableReference();
 
                 //set pixel position
-                Vector3 pos = transform.localPosition;
-                pos.y += board.tileSize.y;
-                transform.localPosition = pos;
+                if(state != State.Rotate) {
+                    Vector3 pos = transform.localPosition;
+                    pos.y += board.tileSize.y;
+                    transform.localPosition = pos;
+                }
 
                 //we were previously generated from the bottom, set to idle
                 if(prevRow == -1) {
@@ -672,6 +673,11 @@ public class Block : MonoBehaviour {
 
             case State.Idle:
                 mFallCheckDelay = 0.0f;
+                break;
+
+            case State.Rotate:
+                if(config.iconAlwaysUp)
+                    mIconUp.Go();
                 break;
 
             case State.Fall:
@@ -756,9 +762,7 @@ public class Block : MonoBehaviour {
                 panel.gameObject.SetActive(false);
 
                 //enable destroy object
-                BlockConfig.BlockInfo info = BlockConfig.instance.blockTypes[(int)type];
-
-                mExploder.Begin(explodeLevel, info.color);
+                mExploder.Begin(explodeLevel, config.color);
                 break;
         }
     }

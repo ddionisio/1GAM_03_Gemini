@@ -7,6 +7,7 @@ public class BlockConfig : MonoBehaviour {
     public class BlockInfo {
         public bool hasIcon = true;
         public tk2dSpriteAnimation icon;
+        public bool iconAlwaysUp = true;
 
         public bool hasPanel = true;
         public tk2dSpriteCollectionData panelSpriteCollection;
@@ -15,12 +16,22 @@ public class BlockConfig : MonoBehaviour {
         public Color color = Color.white;
 
         public Block.Flag flags = (Block.Flag)0;
-    }
 
-    public class BlockData {
-        public int[] spriteClipIds; //id for each state
+        private int[] mSpriteClipIds;
+
+        public int[] spriteClipIds { get { return mSpriteClipIds; } }
+
+        public void Init() {
+            mSpriteClipIds = new int[(int)Block.SpriteState.NumStates];
+
+            for(int c = 0; c < (int)Block.SpriteState.NumStates; c++) {
+                mSpriteClipIds[c] = icon.GetClipIdByName(((Block.SpriteState)c).ToString());
+                if(mSpriteClipIds[c] == -1)
+                    mSpriteClipIds[c] = 0;
+            }
+        }
     }
-        
+    
     public BlockInfo[] blockTypes;
 
     public float destroyFlashDelay;
@@ -31,12 +42,8 @@ public class BlockConfig : MonoBehaviour {
             
     private static BlockConfig mInstance;
 
-    private BlockData[] mBlockData;
-
     public static BlockConfig instance { get { return mInstance; } }
-
-    public BlockData[] blockData { get { return mBlockData; } }
-        
+            
     void OnDestroy() {
         mInstance = null;
     }
@@ -45,18 +52,8 @@ public class BlockConfig : MonoBehaviour {
         mInstance = this;
 
         //configure data
-        mBlockData = new BlockData[(int)Block.Type.NumTypes];
-
         for(int i = 0; i < blockTypes.Length; i++) {
-            mBlockData[i] = new BlockData();
-
-            mBlockData[i].spriteClipIds = new int[(int)Block.SpriteState.NumStates];
-
-            for(int c = 0; c < (int)Block.SpriteState.NumStates; c++) {
-                mBlockData[i].spriteClipIds[c] = blockTypes[i].icon.GetClipIdByName(((Block.SpriteState)c).ToString());
-                if(mBlockData[i].spriteClipIds[c] == -1)
-                    mBlockData[i].spriteClipIds[c] = 0;
-            }
+            blockTypes[i].Init();
         }
     }
 }

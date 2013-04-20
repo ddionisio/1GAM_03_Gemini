@@ -9,14 +9,21 @@ public class RowBlockRising : MonoBehaviour {
         Danger,
         Boost,
     }
-
-    public Block.Type[] powerBlocks;
-
-    public int numPowerPerRow = 2;
-
+    
     public float moveSpeed;
     public float boostSpeed;
     public float dangerDelay;
+
+    /// <summary>
+    /// set this to a randomizer group to allow spawning of special blocks
+    /// If you want chances of special type not happening, add a "NumType" in the randomizer
+    /// </summary>
+    public string specialGroupRandomizer = "";
+
+    /// <summary>
+    /// The number of specials that can be added in the row
+    /// </summary>
+    public int maxSpecial = 1;
     
     private Board mBoard = null;
     
@@ -27,9 +34,8 @@ public class RowBlockRising : MonoBehaviour {
 
     private float mCurSpeed;
 
-    private Block.Type[] mPowerBlockInserts;
-    private int mCurPowerBlockInd = 0;
-
+    private Block.Type[] mSpecialInserts;
+        
     public bool boost {
         get {
             return mState == State.Boost;
@@ -68,7 +74,7 @@ public class RowBlockRising : MonoBehaviour {
         mBoard = GetComponent<Board>();
         mBoard.actCallback += OnBoardAction;
 
-        mPowerBlockInserts = new Block.Type[numPowerPerRow];
+        mSpecialInserts = new Block.Type[mBoard.numCol];
     }
 
     void Update() {
@@ -205,21 +211,26 @@ public class RowBlockRising : MonoBehaviour {
 
         return false;
     }
-
-    private Block.Type NextPowerBlock() {
-        Block.Type ret = powerBlocks[mCurPowerBlockInd];
-        mCurPowerBlockInd++;
-        if(mCurPowerBlockInd == powerBlocks.Length)
-            mCurPowerBlockInd = 0;
-        return ret;
-    }
-
+    
     private void GenerateBlocks() {
         //set power blocks to insert
-        for(int i = 0; i < numPowerPerRow; i++) {
-            mPowerBlockInserts[i] = NextPowerBlock();
-        }
+        if(!string.IsNullOrEmpty(specialGroupRandomizer)) {
+            BlockRandomizer randomizer = BlockRandomizer.GetRandomizer(specialGroupRandomizer);
+            for(int i = 0; i < mSpecialInserts.Length; i++) {
+                if(i < maxSpecial) {
+                    mSpecialInserts[i] = randomizer.pick;
+                }
+                else {
+                    mSpecialInserts[i] = Block.Type.NumTypes;
+                }
+            }
 
-        mBoard.GenerateRow(-1, Block.State.Wait, true, mPowerBlockInserts);
+            M8.ArrayUtil.Shuffle(mSpecialInserts);
+
+            mBoard.GenerateRow(-1, Block.State.Wait, true, mSpecialInserts);
+        }
+        else {
+            mBoard.GenerateRow(-1, Block.State.Wait, true, null);
+        }
     }
 }

@@ -56,8 +56,6 @@ public class Board : MonoBehaviour {
     private int mFallCounter = 0;
     private int mDestroyCounter = 0;
 
-    private Block.Type[] mRowInserts;
-
     public Cursor cursor { get { return mCursor; } }
 
     public int maxBlocks { get { return mMaxBlocks; } }
@@ -199,24 +197,21 @@ public class Board : MonoBehaviour {
         }
     }
 
+    /// <summary>
+    /// Generate an entire row. If giving insertBlocks, make sure it is of the same length as a row, shuffled, and
+    /// any empty spots are set to: NumTypes
+    /// </summary>
     public void GenerateRow(int rowInd, Block.State state, bool checkPrevType, Block.Type[] insertBlocks) {
         Block.Type pickType = Block.Type.NumTypes;
 
         if(insertBlocks != null) {
-            //shuffle the insert blocks
-            for(int i = 0; i < numCol; i++) {
-                mRowInserts[i] = i < insertBlocks.Length ? insertBlocks[i] : Block.Type.NumTypes;
-            }
-
-            M8.ArrayUtil.Shuffle(mRowInserts);
-            //
-
+           
             //go through and put stuff on the row
             for(int c = 0; c < numCol; c++) {
-                if(mRowInserts[c] == Block.Type.NumTypes)
+                if(insertBlocks[c] == Block.Type.NumTypes)
                     pickType = Pick(mBlockTypePicker, checkPrevType ? pickType : Block.Type.NumTypes, rowInd, c, 1, 1, 1, 1);
                 else {
-                    pickType = mRowInserts[c];
+                    pickType = insertBlocks[c];
                 }
 
                 SpawnBlock(pickType, state, rowInd, c, 1, 1);
@@ -238,11 +233,11 @@ public class Board : MonoBehaviour {
         Block.Type pickType = randomizer.pick;
 
         //check if it will check-match within table
-        if(CheckMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) || pickType == prevType) {
+        if(CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) || pickType == prevType) {
             //keep getting to the next until there is no match
             for(int i = 0; i < randomizer.items.Length; i++) {
                 pickType = randomizer.next;
-                if(!CheckMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) && pickType != prevType)
+                if(!CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) && pickType != prevType)
                     break;
             }
         }
@@ -250,7 +245,7 @@ public class Board : MonoBehaviour {
         return pickType;
     }
 
-    public bool CheckMatch(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
+    public bool CheckNeighborMatch(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
         //check the surrounding
         
         int minCol, maxCol;
@@ -301,76 +296,97 @@ public class Board : MonoBehaviour {
         }
 
         return false;
-        //return GetMaxMatchCount(type, row, col, aNumRow, aNumCol, rowDir, colDir) >= 2;//> Mathf.Max(aNumCol, aNumRow);
     }
 
-    public int GetMaxMatchCount(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
-        int count = 0;
+    private int GetMatchesRecurse(Block block, List<Block> output) {
+        int count = block.tileSize.col * block.tileSize.row;
+
+        int colDir = block.tileDir.col, rowDir = block.tileDir.row, col = block.tilePos.col, row = block.tilePos.row;
+        int sizeCol = block.tileSize.col, sizeRow = block.tileSize.row;
+
+        //add this block to output
+        block.flags |= Block.Flag.Match;
+        output.Add(block);
+
+        int r, c;
 
         //vertical
         int minCol, maxCol;
-        GetIndexRange(col, aNumCol, colDir, numCol, out minCol, out maxCol);
+        Board.GetIndexRange(col, sizeCol, colDir, numCol, out minCol, out maxCol);
 
-        for(int c = minCol; c <= maxCol; c++) {
-            int rowCount = 1;// aNumRow;
-
-            //check upwards
-            for(int r = rowDir > 0 ? row + aNumRow : row + 1; r < table.Length;) {
+        //check upwards
+        r = rowDir > 0 ? row + sizeRow : row + 1;
+        if(r < numRow) {
+            for(c = minCol; c <= maxCol; c++) {
                 Block b = table[r][c];
-                if(b != null && b.CheckMatch(type)) {
-                    rowCount++;
-                    r += b.tileSize.row;
+                if(b != null && block.CheckMatch(b) && (b.flags & Block.Flag.Match) == 0) {
+                    count += GetMatchesRecurse(b, output);
                 }
-                else
-                    break;
             }
+        }
 
-            //check downwards
-            for(int r = rowDir > 0 ? row - 1 : row - aNumRow; r >= 0;) {
+        //check downwards
+        r = rowDir > 0 ? row - 1 : row - sizeRow;
+        if(r >= 0) {
+            for(c = minCol; c <= maxCol; c++) {
                 Block b = table[r][c];
-                if(b != null && b.CheckMatch(type)) {
-                    rowCount++;
-                    r -= b.tileSize.row;
+                if(b != null && block.CheckMatch(b) && (b.flags & Block.Flag.Match) == 0) {
+                    count += GetMatchesRecurse(b, output);
                 }
-                else
-                    break;
             }
-
-            if(rowCount > count)
-                count = rowCount;
         }
 
         //horizontal
         int minRow, maxRow;
-        GetIndexRange(row, aNumRow, rowDir, numRow, out minRow, out maxRow);
+        Board.GetIndexRange(row, sizeRow, rowDir, numRow, out minRow, out maxRow);
 
-        for(int r = minRow; r <= maxRow; r++) {
-            int colCount = 1;// aNumCol;
-
-            //check right
-            for(int c = colDir > 0 ? col + aNumCol : col + 1; c < numCol;) {
+        //check right
+        c = colDir > 0 ? col + sizeCol : col + 1;
+        if(c < numCol) {
+            for(r = minRow; r <= maxRow; r++) {
                 Block b = table[r][c];
-                if(b != null && b.CheckMatch(type)) {
-                    colCount++;
-                    c += b.tileSize.col;
+                if(b != null && block.CheckMatch(b) && (b.flags & Block.Flag.Match) == 0) {
+                    count += GetMatchesRecurse(b, output);
                 }
-                else
-                    break;
             }
+        }
 
-            //check left
-            for(int c = rowDir > 0 ? col - 1 : col - aNumCol; c >= 0;) {
+        //check left
+        c = colDir > 0 ? col - 1 : col - sizeCol;
+        if(c >= 0) {
+            for(r = minRow; r <= maxRow; r++) {
                 Block b = table[r][c];
-                if(b != null && b.CheckMatch(type)) {
-                    colCount++;
-                    c -= b.tileSize.col;
+                if(b != null && block.CheckMatch(b) && (b.flags & Block.Flag.Match) == 0) {
+                    count += GetMatchesRecurse(b, output);
                 }
-                else
-                    break;
             }
+        }
 
-            if(colCount > count)
-                count = colCount;
+        return count;
+    }
+
+    /// <summary>
+    /// Add blocks to output if there are any matches >= criteria based on given block,
+    /// the given block will also be added if we did get matches.
+    /// Returns the number of blocks added to output
+    /// </summary>
+    public int GetMatches(Block block, List<Block> output, int criteria) {
+        int count = 0;
+
+        if((block.flags & Block.Flag.Match) == 0 && block.canMatch) {
+            int lastAddIndex = output.Count - 1;
+
+            count = GetMatchesRecurse(block, output);
+
+            if(count < 4) {
+                //clear out the added crap
+                for(int i = lastAddIndex + 1; i < output.Count; i++) {
+                    output[i].flags ^= Block.Flag.Match;
+                }
+                output.RemoveRange(lastAddIndex + 1, output.Count - lastAddIndex - 1);
+
+                count = 0;
+            }
         }
 
         return count;
@@ -398,8 +414,6 @@ public class Board : MonoBehaviour {
         mMaxBlocks = numRow * numCol * 2 + numCol;
 
         mTable = M8.ArrayUtil.NewDoubleArray<Block>(numRow * 2, numCol);
-
-        mRowInserts = new Block.Type[numCol];
 
         mCursor = GetComponentInChildren<Cursor>();
         mCursor.board = this;

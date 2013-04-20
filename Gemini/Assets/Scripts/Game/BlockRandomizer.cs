@@ -43,10 +43,6 @@ public class BlockRandomizer : MonoBehaviour, IComparer<BlockRandomizer.Item> {
         BlockRandomizer ret = null;
         if(mGroup != null) {
             mGroup.TryGetValue(group, out ret);
-
-            if(ret == null) {
-                Debug.LogWarning("Unable to find group: " + group);
-            }
         }
 
         return ret;
@@ -101,7 +97,12 @@ public class BlockRandomizer : MonoBehaviour, IComparer<BlockRandomizer.Item> {
         if(mGroup == null)
             mGroup = new Dictionary<string, BlockRandomizer>();
 
-        mGroup.Add(group, this);
+        if(!mGroup.ContainsKey(group)) {
+            mGroup.Add(group, this);
+        }
+        else {
+            Debug.LogWarning("Randomizer group already exists for: " + group);
+        }
 
         //prep up randomization
 
