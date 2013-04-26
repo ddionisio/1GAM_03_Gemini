@@ -13,7 +13,6 @@ public class BoardEvaluatorPower : MonoBehaviour {
 
     private List<Block> mMatches;
 
-    private int mChainCounter = 0;
     private bool mChainCountActive = false;
 
     public int processCount { get { return mProcess != null ? mProcess.Count : 0; } }
@@ -78,22 +77,28 @@ public class BoardEvaluatorPower : MonoBehaviour {
                     }
                 }
 
+                int curChain = mBoard.chainCounter;
+
                 if(mMatches.Count > 0) {
                     Board.MatchData matchDat;
 
                     //chain stuff accordingly, let everyone know what to do with the matched blocks
                     if(numChainMark > 0) {
-                        mChainCounter++;
-                        matchDat.chain = mChainCounter;
+                        curChain++;
+                        matchDat.chain = curChain;
+
+                        mBoard._ChainSetCounter(curChain);
                     }
                     else {
+                        //reset chain for match with no chain potential, but don't reset the board chain
                         matchDat.chain = 1;
 
-                        if(mChainCounter == 0)
-                            mChainCounter = 1;
+                        if(curChain == 0) {
+                            mBoard._ChainSetCounter(1);
+                        }
                     }
 
-                    Debug.Log("chain counter: " + mChainCounter + " match chain: " + matchDat.chain);
+                    Debug.Log("chain counter: " + curChain + " match chain: " + matchDat.chain);
 
                     mBoard.ProcessMatches(mMatches, matchDat);
 
@@ -125,7 +130,7 @@ public class BoardEvaluatorPower : MonoBehaviour {
             mChainCountActive = numFalling > 0 || numDestroying > 0 || isRotating || mEvaluating;
         }
 
-        mChainCounter = 0;
+        mBoard._ChainSetCounter(0);
 
         Debug.Log("Chain reset");
     }

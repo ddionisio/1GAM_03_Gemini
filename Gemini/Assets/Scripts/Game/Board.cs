@@ -30,6 +30,9 @@ public class Board : MonoBehaviour {
 
     public Vector2 tileSize;
 
+    public int startNumBlocks = 0;
+    public int startNumBlocksMaxRowIndex = 7;
+
     public string enterAnimation;
     public string exitAnimation;
 
@@ -55,6 +58,7 @@ public class Board : MonoBehaviour {
 
     private int mFallCounter = 0;
     private int mDestroyCounter = 0;
+    private int mChainCounter = 0;
 
     public Cursor cursor { get { return mCursor; } }
 
@@ -71,6 +75,11 @@ public class Board : MonoBehaviour {
     /// Get number of destruction in process
     /// </summary>
     public int destroyCounter { get { return mDestroyCounter; } }
+
+    /// <summary>
+    /// Get the current chain number
+    /// </summary>
+    public int chainCounter { get { return mChainCounter; } }
 
     /// <summary>
     /// [row, col]
@@ -98,6 +107,16 @@ public class Board : MonoBehaviour {
             min = 0;
         if(max >= maxCount)
             max = maxCount - 1;
+    }
+
+    public IEnumerable<Block> GetBlocks() {
+        foreach(Transform block in mBlockHolder) {
+            Block b = block.GetComponent<Block>();
+            if(b != null)
+                yield return b;
+        }
+
+        yield break;
     }
 
     /// <summary>
@@ -182,6 +201,17 @@ public class Board : MonoBehaviour {
         return ret;
     }
 
+    /// <summary>
+    /// Grab block from table with given pos, checks for invalid row, col
+    /// </summary>
+    public Block GetBlock(M8.TilePos pos) {
+        Block b = null;
+        if(pos.row >= 0 && pos.row < numRow && pos.col >= 0 && pos.col < numCol)
+            b = mTable[pos.row][pos.col];
+
+        return b;
+    }
+
     public Block SpawnBlock(Block.Type type, Block.State state, int row, int col, int numRow, int numCol) {
         Transform spawned = mBlockPool.Spawn(BlockPoolType, type.ToString(), null, null);
         if(spawned != null) {
@@ -233,11 +263,11 @@ public class Board : MonoBehaviour {
         Block.Type pickType = randomizer.pick;
 
         //check if it will check-match within table
-        if(CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) || pickType == prevType) {
+        if(CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir, true) || pickType == prevType) {
             //keep getting to the next until there is no match
             for(int i = 0; i < randomizer.items.Length; i++) {
                 pickType = randomizer.next;
-                if(!CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir) && pickType != prevType)
+                if(!CheckNeighborMatch(pickType, row, col, aNumRow, aNumCol, rowDir, colDir, true) && pickType != prevType)
                     break;
             }
         }
@@ -245,53 +275,48 @@ public class Board : MonoBehaviour {
         return pickType;
     }
 
-    public bool CheckNeighborMatch(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir) {
+    public bool CheckNeighborMatch(Block.Type type, int row, int col, int aNumRow, int aNumCol, int rowDir, int colDir, bool ignoreState) {
         //check the surrounding
         
         int minCol, maxCol;
         GetIndexRange(col, aNumCol, colDir, numCol, out minCol, out maxCol);
-        minCol--; maxCol++;
 
         int minRow, maxRow;
         GetIndexRange(row, aNumRow, rowDir, numRow, out minRow, out maxRow);
-        minRow--; maxRow++;
 
         //top/bottom
+        int topR = maxRow + 1, botR = minRow - 1;
         for(int c = minCol; c <= maxCol; c++) {
-            if(c >= 0 && c < numCol) {
-                //top
-                if(maxRow < numRow) {
-                    Block b = mTable[maxRow][c];
-                    if(b != null && b.CheckMatch(type))
-                        return true;
-                }
+            //top
+            if(topR < numRow) {
+                Block b = mTable[topR][c];
+                if(b != null && (ignoreState ? b.CheckMatchIgnoreState(type) : b.CheckMatch(type)))
+                    return true;
+            }
 
-                //bottom
-                if(minRow >= 0) {
-                    Block b = mTable[minRow][c];
-                    if(b != null && b.CheckMatch(type))
-                        return true;
-                }
+            //bottom
+            if(botR >= 0) {
+                Block b = mTable[botR][c];
+                if(b != null && (ignoreState ? b.CheckMatchIgnoreState(type) : b.CheckMatch(type)))
+                    return true;
             }
         }
 
         //left/right
-        minRow++; maxRow--;
+        int leftC = minCol - 1, rightC = maxCol + 1;
         for(int r = minRow; r <= maxRow; r++) {
-            if(r >= 0 && r < numRow) {
-                //right
-                if(maxCol < numCol) {
-                    Block b = mTable[r][maxCol];
-                    if(b != null && b.CheckMatch(type))
-                        return true;
-                }
+            //right
+            if(rightC < numCol) {
+                Block b = mTable[r][rightC];
+                if(b != null && (ignoreState ? b.CheckMatchIgnoreState(type) : b.CheckMatch(type)))
+                    return true;
+            }
 
-                //left
-                if(minCol >= 0) {
-                    Block b = mTable[r][minCol];
-                    if(b != null && b.CheckMatch(type))
-                        return true;
-                }
+            //left
+            if(leftC >= 0) {
+                Block b = mTable[r][leftC];
+                if(b != null && (ignoreState ? b.CheckMatchIgnoreState(type) : b.CheckMatch(type)))
+                    return true;
             }
         }
 
@@ -402,6 +427,11 @@ public class Board : MonoBehaviour {
         mDestroyCounter = val;
     }
 
+    //used by evaluators only!
+    public void _ChainSetCounter(int val) {
+        mChainCounter = val;
+    }
+
     void OnDestroy() {
         actCallback = null;
         evalCallback = null;
@@ -439,6 +469,11 @@ public class Board : MonoBehaviour {
                 b.Init(this, Block.State.Wait);
         }
 
+        //generate blocks
+        if(startNumBlocks > 0) {
+            FillBoard(startNumBlocks, startNumBlocksMaxRowIndex);
+        }
+
         //wait until activate
         mBlockHolder.gameObject.SetActive(false);
 
@@ -462,6 +497,34 @@ public class Board : MonoBehaviour {
                     Gizmos.DrawWireCube(curPos, new Vector3(tileSize.x, tileSize.y, 1.0f));
                 }
             }
+        }
+    }
+
+    private void FillBoard(int numBlocks, int maxRow) {
+        
+        //assumes table is empty
+        List<M8.TilePos> offsets = new List<M8.TilePos>(numCol);
+        for(int i = 0; i < numCol; i++)
+            offsets.Add(new M8.TilePos(0, i));
+
+        for(int i = 0; i < numBlocks; i++) {
+            int ind = Random.Range(0, offsets.Count);
+
+            M8.TilePos pos = offsets[ind];
+
+            Block.Type pickType = Pick(mBlockTypePicker, Block.Type.NumTypes, pos.row, pos.col, 1, 1, 1, 1);
+            SpawnBlock(pickType, Block.State.Wait, pos.row, pos.col, 1, 1);
+
+            pos.row++;
+
+            if(pos.row == startNumBlocksMaxRowIndex) {
+                if(offsets.Count == 1) //this should not happen
+                    break;
+
+                offsets.RemoveAt(ind);
+            }
+            else
+                offsets[ind] = pos;
         }
     }
 

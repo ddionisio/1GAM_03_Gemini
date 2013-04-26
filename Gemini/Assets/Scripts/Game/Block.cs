@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class Block : MonoBehaviour {
     public enum Type {
@@ -8,6 +9,8 @@ public class Block : MonoBehaviour {
         Metal,
         Water,
         Wood,
+
+        Special, //matches any block
 
         FirePower,
         EarthPower,
@@ -50,8 +53,7 @@ public class Block : MonoBehaviour {
         Match = 0x2, //tagged during block matching
         RotateLock = 0x4, //can't rotate this block, sorry!
         MatchLock = 0x8, //can't match anything, useless!
-        FallLock = 0x10, //can't fall, stuck!
-        FixedIcon = 0x20 //fixed icon orientation
+        FallLock = 0x10 //can't fall, stuck!
     }
 
     public Type startType = Type.NumTypes;
@@ -83,6 +85,8 @@ public class Block : MonoBehaviour {
 
     private int mExplodeLevel = 0;
 
+    private BlockActionBase mAction;
+
     public static Type GetMatchType(Type type) {
         switch(type) {
             case Type.FirePower:
@@ -108,16 +112,28 @@ public class Block : MonoBehaviour {
         set { mFlags = value; }
     }
 
+    public bool isNormalType {
+        get {
+            return type < Type.Special;
+        }
+    }
+
+    public BlockActionBase action { get { return mAction; } }
+
     public Type type {
         get { return mType; }
 
         set {
             if(mType != value) {
+                EndCurrentState();
+
+                //deinitialize current action
+                if(mAction != null)
+                    mAction.OnDeinit(this);
+                                
                 mType = value;
 
                 if(mType != Type.NumTypes) {
-                    EndCurrentState();
-
                     BlockConfig.BlockInfo info = config;
 
                     //icon
@@ -138,6 +154,11 @@ public class Block : MonoBehaviour {
                                         
                     //set match
                     mMatch = GetMatchType(mType);
+
+                    //initialize action
+                    mAction = info.action;
+                    if(mAction != null)
+                        mAction.OnInit(this);
 
                     StartCurrentState();
                 }
@@ -238,6 +259,12 @@ public class Block : MonoBehaviour {
         }
     }
 
+    public bool canMatchIgnoreState {
+        get {
+            return (flags & Flag.MatchLock) == 0;
+        }
+    }
+
     public int minRow {
         get {
             return tileSize.row > 1 && tileDir.row < 0 ? tilePos.row - (tileSize.row - 1) : tilePos.row;
@@ -269,9 +296,67 @@ public class Block : MonoBehaviour {
 
     public BlockExplode exploder { get { return mExploder; } }
 
+    public IEnumerable<Block> GetNeighbors() {
+        Block[][] table = mOwner.table;
+
+        int sCol = minCol; if(sCol < 0) sCol = 0;
+        int eCol = maxCol; if(eCol >= mOwner.numCol) eCol = mOwner.numCol - 1;
+        int sRow = minRow; if(sRow < 0) sRow = 0;
+        int eRow = maxRow; if(eRow >= mOwner.numRow) eRow = mOwner.numRow - 1;
+
+        //top
+        int topRow = eRow + 1;
+        if(topRow < mOwner.numRow) {
+            Block[] tableRow = table[topRow];
+            for(int c = sCol; c <= eCol; c++) {
+                yield return tableRow[c];
+            }
+        }
+
+        //bottom
+        int botRow = sRow - 1;
+        if(botRow >= 0) {
+            Block[] tableRow = table[botRow];
+            for(int c = sCol; c <= eCol; c++) {
+                yield return tableRow[c];
+            }
+        }
+
+        //left
+        int leftCol = sCol - 1;
+        if(leftCol >= 0) {
+            for(int r = sRow; r <= eRow; r++) {
+                yield return table[r][leftCol];
+            }
+        }
+
+        //right
+        int rightCol = eCol + 1;
+        if(rightCol < mOwner.numCol) {
+            for(int r = sRow; r <= eRow; r++) {
+                yield return table[r][rightCol];
+            }
+        }
+
+        yield break;
+    }
+
     public bool CheckMatch(Block other) {
         if(!canMatch || !other.canMatch)
             return false;
+
+        if((type == Type.Special && other.isNormalType) || (other.type == Type.Special && isNormalType))
+            return true;
+
+        return mMatch == other.mMatch;
+    }
+
+    public bool CheckMatchIgnoreState(Block other) {
+        if(!canMatchIgnoreState || other.canMatchIgnoreState)
+            return false;
+
+        if((type == Type.Special && other.isNormalType) || (other.type == Type.Special && isNormalType))
+            return true;
 
         return mMatch == other.mMatch;
     }
@@ -282,6 +367,21 @@ public class Block : MonoBehaviour {
         //default: same type
         if(!canMatch)
             return false;
+
+        if((type == Type.Special && other < type) || (other == Type.Special && type < other))
+            return true;
+
+        return mMatch == GetMatchType(other);
+    }
+
+    public bool CheckMatchIgnoreState(Type other) {
+        //TODO: special blocks matching, like all-color match or something
+        //default: same type
+        if(!canMatchIgnoreState)
+            return false;
+
+        if((type == Type.Special && other < type) || (other == Type.Special && type < other))
+            return true;
 
         return mMatch == GetMatchType(other);
     }
@@ -559,7 +659,7 @@ public class Block : MonoBehaviour {
     }
 
     void OnDespawned() {
-        state = State.NumStates;
+        type = Type.NumTypes; //deinits state and action
 
         if(mOwner != null) {
             RemoveTableReference();
@@ -654,7 +754,7 @@ public class Block : MonoBehaviour {
                 }
 
                 //we were previously generated from the bottom, set to idle
-                if(prevRow == -1) {
+                if(prevRow < 0 && state == State.Wait) {
                     state = State.Idle;
 
                     mOwner.Eval(this);

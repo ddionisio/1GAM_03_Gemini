@@ -61,6 +61,8 @@ public class BlockConfigInspector : Editor {
                     info = data.blockTypes[typeInd];
                 }
 
+                info.type = (Block.Type)typeInd;
+
                 GUILayout.BeginVertical(GUI.skin.box);
 
                 ////type

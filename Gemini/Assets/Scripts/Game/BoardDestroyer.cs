@@ -67,6 +67,17 @@ public class BoardDestroyer : MonoBehaviour {
         foreach(Block block in aBlocks) {
             block.state = Block.State.Flash;
 
+            //let block know we are going to die
+            if(block.action != null)
+                block.action.OnDie(block);
+
+            //let surrounding idle block know we are dying (for certain special blocks)
+            foreach(Block neighbor in block.GetNeighbors()) {
+                if(neighbor != null && neighbor.action != null && neighbor.state == Block.State.Idle) {
+                    neighbor.action.OnDieNeighbor(neighbor, block);
+                }
+            }
+
             grpBlocks.Add(block);
         }
         
@@ -103,6 +114,12 @@ public class BoardDestroyer : MonoBehaviour {
         
         //destroy blocks
         foreach(Block b in grpBlocks) {
+            //check current tile location and see if there's a block that needs to go idle
+            //this is for spawned blocks
+            Block blockInTable = mBoard.GetBlock(b.tilePos);
+            if(blockInTable != null && blockInTable != b && blockInTable.state == Block.State.Wait)
+                blockInTable.state = Block.State.Idle;
+
             b.Release();
         }
                 

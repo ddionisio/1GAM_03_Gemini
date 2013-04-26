@@ -5,6 +5,7 @@ using System.Collections;
 public class BlockConfig : MonoBehaviour {
     [System.Serializable]
     public class BlockInfo {
+        public Block.Type type;
         public bool hasIcon = true;
         public tk2dSpriteAnimation icon;
         public bool iconAlwaysUp = true;
@@ -19,7 +20,10 @@ public class BlockConfig : MonoBehaviour {
 
         private int[] mSpriteClipIds;
 
+        private BlockActionBase mAction;
+
         public int[] spriteClipIds { get { return mSpriteClipIds; } }
+        public BlockActionBase action { get { return mAction; } }
 
         public void Init() {
             mSpriteClipIds = new int[(int)Block.SpriteState.NumStates];
@@ -28,6 +32,16 @@ public class BlockConfig : MonoBehaviour {
                 mSpriteClipIds[c] = icon.GetClipIdByName(((Block.SpriteState)c).ToString());
                 if(mSpriteClipIds[c] == -1)
                     mSpriteClipIds[c] = 0;
+            }
+
+            //set action based on type
+            switch(type) {
+                case Block.Type.FirePower:
+                    break;
+
+                default:
+                    mAction = null;
+                    break;
             }
         }
     }
